@@ -6,7 +6,7 @@ import { enrichSingle } from './api';
 import { EnrichmentResult } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const DEFAULT_DOMAINS = 'stripe.com\nnotion.so\nvercel.com';
+const DEFAULT_DOMAINS = 'stripe.com\nnotion.so\nvercel.com\nlinear.app\nramp.com';
 
 function App() {
   const [input, setInput] = useState(DEFAULT_DOMAINS);
