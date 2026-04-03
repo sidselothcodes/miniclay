@@ -16,6 +16,7 @@ const LoadingRow: React.FC<LoadingRowProps> = ({ domain }) => {
       <td className="table-cell"><div className="skeleton" style={{ width: '60%' }} /></td>
       <td className="table-cell"><div className="skeleton" style={{ width: '50%' }} /></td>
       <td className="table-cell"><div className="skeleton" style={{ width: '95%' }} /></td>
+      <td className="table-cell"><div className="skeleton" style={{ width: '70%' }} /></td>
     </tr>
   );
 };

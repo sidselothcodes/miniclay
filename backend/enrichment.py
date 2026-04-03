@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import httpx
 from bs4 import BeautifulSoup
@@ -25,6 +27,11 @@ HEADERS = {
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-User": "?1",
     "Upgrade-Insecure-Requests": "1",
+}
+
+GITHUB_HEADERS = {
+    "Accept": "application/vnd.github.v3+json",
+    "User-Agent": "MiniClay-Enrichment/1.0",
 }
 
 
@@ -86,6 +93,11 @@ def extract_metadata(html: str) -> dict:
     }
 
 
+def metadata_is_useful(metadata: dict) -> bool:
+    total = len(metadata.get("title", "")) + len(metadata.get("meta_description", "")) + len(metadata.get("headings", ""))
+    return total >= 50
+
+
 async def fetch_website(domain: str) -> str:
     bare = normalize_domain(domain)
     urls = [
@@ -107,7 +119,56 @@ async def fetch_website(domain: str) -> str:
     raise Exception("Could not reach website")
 
 
-def call_openai(domain: str, metadata: dict) -> dict:
+async def fetch_github_info(company_name: str) -> dict | None:
+    if not company_name:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0, headers=GITHUB_HEADERS) as client_http:
+            response = await client_http.get(
+                "https://api.github.com/search/users",
+                params={"q": f"{company_name} type:org"},
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("items"):
+                return None
+
+            org = data["items"][0]
+            org_login = org.get("login", "")
+
+            org_response = await client_http.get(f"https://api.github.com/orgs/{org_login}")
+            org_response.raise_for_status()
+            org_data = org_response.json()
+
+            return {
+                "github_org": org_login,
+                "github_bio": org_data.get("description") or org_data.get("bio") or "",
+                "github_public_repos": org_data.get("public_repos", 0),
+            }
+    except Exception:
+        return None
+
+
+def parse_gpt_json(content: str) -> dict:
+    content = content.strip()
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+    return json.loads(content)
+
+
+def call_openai(domain: str, metadata: dict, github_info: dict | None = None) -> dict:
+    github_section = ""
+    if github_info:
+        github_section = f"""
+- GitHub Org: {github_info.get('github_org', '')}
+- GitHub Bio: {github_info.get('github_bio', '')}
+- Public Repos: {github_info.get('github_public_repos', 0)}"""
+
     prompt = f"""You are a lead enrichment AI. Given website metadata for a company, extract structured information and write a personalized outreach line.
 
 Website data:
@@ -117,7 +178,7 @@ Website data:
 - OG Title: {metadata['og_title']}
 - OG Description: {metadata['og_description']}
 - Page Headings: {metadata['headings']}
-- Page Content Preview: {metadata['content_preview']}
+- Page Content Preview: {metadata['content_preview']}{github_section}
 
 Extract the following and return ONLY valid JSON, no markdown, no backticks:
 {{
@@ -135,19 +196,7 @@ Extract the following and return ONLY valid JSON, no markdown, no backticks:
         max_tokens=300,
     )
 
-    content = response.choices[0].message.content.strip()
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1] if "\n" in content else content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
-
-    return json.loads(content)
-
-
-def metadata_is_useful(metadata: dict) -> bool:
-    total = len(metadata.get("title", "")) + len(metadata.get("meta_description", "")) + len(metadata.get("headings", ""))
-    return total >= 50
+    return parse_gpt_json(response.choices[0].message.content)
 
 
 def call_openai_knowledge(domain: str) -> dict:
@@ -169,14 +218,15 @@ Return ONLY valid JSON, no markdown, no backticks:
         max_tokens=300,
     )
 
-    content = response.choices[0].message.content.strip()
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1] if "\n" in content else content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
+    return parse_gpt_json(response.choices[0].message.content)
 
-    return json.loads(content)
+
+def apply_enriched(result: dict, enriched: dict):
+    result["companyName"] = enriched.get("companyName")
+    result["description"] = enriched.get("description")
+    result["industry"] = enriched.get("industry")
+    result["companySize"] = enriched.get("companySize")
+    result["outreachLine"] = enriched.get("outreachLine")
 
 
 async def enrich_company(domain: str) -> dict:
@@ -188,43 +238,56 @@ async def enrich_company(domain: str) -> dict:
         "companySize": None,
         "outreachLine": None,
         "status": "error",
-        "source": None,
+        "sources": [],
     }
 
-    scraped = True
     metadata = None
+    website_ok = False
+    github_info = None
 
     try:
         html = await fetch_website(domain)
         metadata = extract_metadata(html)
+        if metadata_is_useful(metadata):
+            website_ok = True
     except Exception:
-        scraped = False
+        pass
 
-    if scraped and metadata and metadata_is_useful(metadata):
+    if website_ok:
+        result["sources"].append("website")
+
+    company_name_hint = None
+    if metadata and metadata.get("title"):
+        company_name_hint = metadata["title"].split("|")[0].split("-")[0].split("—")[0].strip()
+
+    github_info = await fetch_github_info(company_name_hint)
+    if github_info:
+        result["sources"].append("github")
+
+    if website_ok and metadata:
         try:
-            enriched = call_openai(domain, metadata)
-            result["companyName"] = enriched.get("companyName")
-            result["description"] = enriched.get("description")
-            result["industry"] = enriched.get("industry")
-            result["companySize"] = enriched.get("companySize")
-            result["outreachLine"] = enriched.get("outreachLine")
+            enriched = call_openai(domain, metadata, github_info)
+            apply_enriched(result, enriched)
             result["status"] = "success"
-            result["source"] = "website"
             return result
-        except json.JSONDecodeError:
-            pass
-        except Exception:
+        except (json.JSONDecodeError, Exception):
             pass
 
     try:
         enriched = call_openai_knowledge(domain)
-        result["companyName"] = enriched.get("companyName")
-        result["description"] = enriched.get("description")
-        result["industry"] = enriched.get("industry")
-        result["companySize"] = enriched.get("companySize")
-        result["outreachLine"] = enriched.get("outreachLine")
+        apply_enriched(result, enriched)
         result["status"] = "success"
-        result["source"] = "ai_knowledge"
+        if "website" not in result["sources"]:
+            result["sources"].append("ai_knowledge")
+        else:
+            result["sources"].append("ai_knowledge")
+
+        if not github_info:
+            company_name = enriched.get("companyName")
+            github_info = await fetch_github_info(company_name)
+            if github_info and "github" not in result["sources"]:
+                result["sources"].append("github")
+
     except json.JSONDecodeError:
         result["error"] = "AI enrichment failed — could not parse response"
     except Exception:

@@ -40,6 +40,12 @@ function getSizeStyle(size: string | null) {
   return SIZE_COLORS[size.toLowerCase()] || SIZE_COLORS['unknown'];
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  'website': 'Website \u2713',
+  'github': 'GitHub \u2713',
+  'ai_knowledge': 'AI \u2713',
+};
+
 const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
   if (results.length === 0) return null;
 
@@ -54,6 +60,7 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
             <th className="table-header" style={{ width: 120 }}>INDUSTRY</th>
             <th className="table-header" style={{ width: 100 }}>SIZE</th>
             <th className="table-header">AI OUTREACH</th>
+            <th className="table-header" style={{ width: 140 }}>SOURCES</th>
           </tr>
         </thead>
         <tbody>
@@ -69,7 +76,7 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
                     <span className="domain-icon">🌐</span>
                     {result.domain}
                   </td>
-                  <td className="table-cell" colSpan={5}>
+                  <td className="table-cell" colSpan={6}>
                     <span className="error-message">
                       ⚠ Could not enrich — {result.error || 'website unreachable'}
                     </span>
@@ -106,6 +113,15 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
                   </span>
                 </td>
                 <td className="table-cell cell-outreach">{result.outreachLine}</td>
+                <td className="table-cell">
+                  <div className="source-badges">
+                    {(result.sources || []).map((src) => (
+                      <span key={src} className="source-badge">
+                        {SOURCE_LABELS[src] || src}
+                      </span>
+                    ))}
+                  </div>
+                </td>
               </tr>
             );
           })}

@@ -239,6 +239,23 @@ body {
 }
 
 
+.source-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.source-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--clay-gray-100);
+  color: var(--clay-gray-500);
+  white-space: nowrap;
+}
+
 .error-message {
   color: var(--clay-error);
   font-size: 13px;

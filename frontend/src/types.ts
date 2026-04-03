@@ -5,6 +5,7 @@ export interface EnrichmentResult {
   industry: string | null;
   companySize: string | null;
   outreachLine: string | null;
+  sources?: string[];
   status: 'success' | 'error' | 'loading';
   error?: string;
 }
