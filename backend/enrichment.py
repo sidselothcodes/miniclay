@@ -145,8 +145,13 @@ Extract the following and return ONLY valid JSON, no markdown, no backticks:
     return json.loads(content)
 
 
+def metadata_is_useful(metadata: dict) -> bool:
+    total = len(metadata.get("title", "")) + len(metadata.get("meta_description", "")) + len(metadata.get("headings", ""))
+    return total >= 50
+
+
 def call_openai_knowledge(domain: str) -> dict:
-    prompt = f"""You are a lead enrichment AI. Based on your knowledge, provide company information for the domain: {domain}
+    prompt = f"""You are a lead enrichment AI. Based on your training knowledge, provide company information for the domain: {domain}
 
 Return ONLY valid JSON, no markdown, no backticks:
 {{
@@ -195,7 +200,7 @@ async def enrich_company(domain: str) -> dict:
     except Exception:
         scraped = False
 
-    if scraped and metadata:
+    if scraped and metadata and metadata_is_useful(metadata):
         try:
             enriched = call_openai(domain, metadata)
             result["companyName"] = enriched.get("companyName")
