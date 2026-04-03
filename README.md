@@ -59,8 +59,4 @@ npm run dev
 3. Add environment variable: `VITE_API_URL=https://your-railway-url.up.railway.app`
 4. Deploy
 
-## Why I Built This
 
-I'm a software engineer interested in joining Clay. Instead of just sending a resume, I wanted to show I understand the product by building a simplified version of the core enrichment pipeline — from data fetching to AI-powered insights to personalized outreach generation.
-
-The progressive loading UI mirrors how Clay's waterfall enrichment works: each data point fills in as it becomes available, giving users real-time feedback as their leads are enriched.
