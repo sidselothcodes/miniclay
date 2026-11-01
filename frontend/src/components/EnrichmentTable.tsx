@@ -1,49 +1,79 @@
 import React from 'react';
-import { EnrichmentResult } from '../types';
+import { DecisionMaker, EnrichmentResult } from '../types';
+import CopyButton from './CopyButton';
+import Favicon from './Favicon';
 import LoadingRow from './LoadingRow';
 
 interface EnrichmentTableProps {
   results: EnrichmentResult[];
 }
 
-const INDUSTRY_COLORS: Record<string, { bg: string; text: string }> = {
-  'fintech': { bg: '#FEF0E8', text: '#FB7232' },
-  'payments': { bg: '#FEF0E8', text: '#FB7232' },
-  'devtools': { bg: '#EFF6FF', text: '#3B82F6' },
-  'developer tools': { bg: '#EFF6FF', text: '#3B82F6' },
-  'ai/ml': { bg: '#F3E8FF', text: '#9333EA' },
-  'ai': { bg: '#F3E8FF', text: '#9333EA' },
-  'saas': { bg: '#ECFDF5', text: '#059669' },
-  'healthcare': { bg: '#F0FDFA', text: '#0D9488' },
-  'e-commerce': { bg: '#FDF2F8', text: '#DB2777' },
-  'ecommerce': { bg: '#FDF2F8', text: '#DB2777' },
-};
+const GRAY = { bg: '#F3F4F6', text: '#6B7280' };
 
-const SIZE_COLORS: Record<string, { bg: string; text: string }> = {
-  'startup': { bg: '#ECFDF5', text: '#059669' },
-  'mid-market': { bg: '#EFF6FF', text: '#3B82F6' },
-  'enterprise': { bg: '#F3E8FF', text: '#9333EA' },
-  'unknown': { bg: '#F3F4F6', text: '#6B7280' },
-};
+// Same palette as the original industry/size pills, keyed by GTM motion.
+const GTM_COLORS: [RegExp, { bg: string; text: string }][] = [
+  [/usage/i, { bg: '#FEF0E8', text: '#FB7232' }],
+  [/freemium|plg|product-led/i, { bg: '#ECFDF5', text: '#059669' }],
+  [/sales|enterprise/i, { bg: '#F3E8FF', text: '#9333EA' }],
+  [/self-serve|saas|subscription/i, { bg: '#EFF6FF', text: '#3B82F6' }],
+];
 
-function getIndustryStyle(industry: string | null) {
-  if (!industry) return { bg: '#F3F4F6', text: '#6B7280' };
-  const key = industry.toLowerCase().split('/')[0].trim();
-  for (const [k, v] of Object.entries(INDUSTRY_COLORS)) {
-    if (key.includes(k) || k.includes(key)) return v;
+function getGtmStyle(motion: string | null) {
+  if (!motion) return GRAY;
+  return GTM_COLORS.find(([re]) => re.test(motion))?.[1] || GRAY;
+}
+
+function splitPrefix(signal: string): [string, string] {
+  const match = signal.match(/^\s*([^:]{2,24}):\s*(.*)$/s);
+  return match ? [match[1], match[2]] : ['', signal];
+}
+
+function linkedinLabel(url: string): string {
+  const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+  return match ? `in/${decodeURIComponent(match[1])}` : 'Find on LinkedIn';
+}
+
+const DecisionMakerCell: React.FC<{ dm: DecisionMaker | null; alternates?: string[] }> = ({ dm, alternates }) => {
+  if (!dm || dm.full_name === 'Not found') {
+    return (
+      <>
+        <div className="dm-name dm-missing">Not found</div>
+        <div className="dm-role">{dm?.role || 'No public CTO / VP Eng profile found'}</div>
+        {dm?.linkedin_url && (
+          <a className="linkedin-badge" href={dm.linkedin_url} target="_blank" rel="noopener noreferrer">
+            Search LinkedIn ↗
+          </a>
+        )}
+      </>
+    );
   }
-  return { bg: '#F3F4F6', text: '#6B7280' };
-}
 
-function getSizeStyle(size: string | null) {
-  if (!size) return SIZE_COLORS['unknown'];
-  return SIZE_COLORS[size.toLowerCase()] || SIZE_COLORS['unknown'];
-}
+  const mxVerified = dm.email_status === 'MX Verified';
+  const emailTitle = [
+    `${dm.email_status}${mxVerified ? ' (domain accepts mail; mailbox not verified)' : ''} · click to copy`,
+    alternates && alternates.length ? `Also try: ${alternates.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 
-const SOURCE_LABELS: Record<string, string> = {
-  'website': 'Website \u2713',
-  'github': 'GitHub \u2713',
-  'ai_knowledge': 'AI \u2713',
+  return (
+    <>
+      <div className="dm-name">{dm.full_name}</div>
+      <div className="dm-role">{dm.role}</div>
+      <div className="dm-links">
+        <a className="linkedin-badge" href={dm.linkedin_url} target="_blank" rel="noopener noreferrer" title={dm.linkedin_url}>
+          {linkedinLabel(dm.linkedin_url)} ↗
+        </a>
+        {dm.work_email && (
+          <CopyButton text={dm.work_email} className="email-pill" title={emailTitle}>
+            <span className="email-text">{dm.work_email}</span>
+            {mxVerified ? <span className="mx-ok">MX ✓</span> : <span className="mx-muted">pattern</span>}
+            <span className="copy-icon" aria-hidden="true">⧉</span>
+          </CopyButton>
+        )}
+      </div>
+    </>
+  );
 };
 
 const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
@@ -54,13 +84,13 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
       <table className="enrichment-table">
         <thead>
           <tr>
-            <th className="table-header" style={{ width: 140 }}>DOMAIN</th>
-            <th className="table-header" style={{ width: 130 }}>COMPANY</th>
-            <th className="table-header" style={{ width: 220 }}>DESCRIPTION</th>
-            <th className="table-header" style={{ width: 120 }}>INDUSTRY</th>
-            <th className="table-header" style={{ width: 100 }}>SIZE</th>
+            <th className="table-header" style={{ width: 170 }}>COMPANY</th>
+            <th className="table-header" style={{ width: 200 }}>PRODUCT &amp; ICP</th>
+            <th className="table-header" style={{ width: 150 }}>GTM &amp; PRICING</th>
+            <th className="table-header" style={{ width: 270 }}>TECH &amp; LIVE SIGNALS</th>
+            <th className="table-header" style={{ width: 200 }}>DECISION MAKER</th>
             <th className="table-header">AI OUTREACH</th>
-            <th className="table-header" style={{ width: 140 }}>SOURCES</th>
+            <th className="table-header" style={{ width: 110 }}>SOURCES</th>
           </tr>
         </thead>
         <tbody>
@@ -69,57 +99,80 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
               return <LoadingRow key={result.domain} domain={result.domain} />;
             }
 
+            const companyCell = (
+              <td className="table-cell">
+                <div className="company-stack">
+                  <Favicon domain={result.domain} />
+                  <div className="company-text">
+                    <div className="company-name">{result.company_name || result.domain}</div>
+                    <div className="company-domain">{result.domain}</div>
+                  </div>
+                </div>
+              </td>
+            );
+
             if (result.status === 'error') {
               return (
                 <tr key={result.domain} className="table-row error-row">
-                  <td className="table-cell cell-domain">
-                    <span className="domain-icon">🌐</span>
-                    {result.domain}
-                  </td>
+                  {companyCell}
                   <td className="table-cell" colSpan={6}>
-                    <span className="error-message">
-                      ⚠ Could not enrich — {result.error || 'website unreachable'}
-                    </span>
+                    <span className="error-message">⚠ Could not enrich — {result.error || 'website unreachable'}</span>
                   </td>
                 </tr>
               );
             }
 
-            const industryStyle = getIndustryStyle(result.industry);
-            const sizeStyle = getSizeStyle(result.companySize);
+            const gtmStyle = getGtmStyle(result.gtm_motion);
 
             return (
               <tr key={result.domain} className="table-row fade-in">
-                <td className="table-cell cell-domain">
-                  <span className="domain-icon">🌐</span>
-                  {result.domain}
-                </td>
-                <td className="table-cell cell-company">{result.companyName}</td>
-                <td className="table-cell cell-description">{result.description}</td>
+                {companyCell}
+
+                <td className="table-cell cell-description">{result.product_and_icp}</td>
+
                 <td className="table-cell">
-                  <span
-                    className="pill"
-                    style={{ backgroundColor: industryStyle.bg, color: industryStyle.text }}
-                  >
-                    {result.industry}
+                  <span className="pill" style={{ backgroundColor: gtmStyle.bg, color: gtmStyle.text }}>
+                    {result.gtm_motion}
                   </span>
+                  <div className="pricing-sub">{result.pricing_tier_summary}</div>
                 </td>
+
                 <td className="table-cell">
-                  <span
-                    className="pill"
-                    style={{ backgroundColor: sizeStyle.bg, color: sizeStyle.text }}
-                  >
-                    {result.companySize}
-                  </span>
+                  <ul className="signal-list">
+                    {result.tech_and_live_signals.map((signal, i) => {
+                      const [prefix, rest] = splitPrefix(signal);
+                      return (
+                        <li key={i}>
+                          {prefix && <strong>{prefix}:</strong>} {rest}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </td>
-                <td className="table-cell cell-outreach">{result.outreachLine}</td>
+
+                <td className="table-cell">
+                  <DecisionMakerCell dm={result.decision_maker} alternates={result.email_alternates} />
+                </td>
+
+                <td className="table-cell cell-outreach">
+                  {result.ai_outreach && <CopyButton text={result.ai_outreach} title="Copy email" />}
+                  {result.ai_outreach}
+                </td>
+
                 <td className="table-cell">
                   <div className="source-badges">
-                    {(result.sources || []).map((src) => (
-                      <span key={src} className="source-badge">
-                        {SOURCE_LABELS[src] || src}
-                      </span>
-                    ))}
+                    {result.sources_used.map((src) => {
+                      const url = result.source_urls?.[src]?.[0];
+                      return url ? (
+                        <a key={src} className="source-badge" href={url} target="_blank" rel="noopener noreferrer" title={url}>
+                          {src} {'✓'}
+                        </a>
+                      ) : (
+                        <span key={src} className="source-badge">
+                          {src} {'✓'}
+                        </span>
+                      );
+                    })}
                   </div>
                 </td>
               </tr>
