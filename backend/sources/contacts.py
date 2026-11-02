@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus
 
 import httpx
 
@@ -17,9 +17,7 @@ log = logging.getLogger("miniclay.contacts")
 
 LINKEDIN_PROFILE_RE = re.compile(r"^https?://([a-z]{2,3}\.)?(www\.)?linkedin\.com/in/([^/?#]+)/?", re.I)
 
-# (pattern, canonical label, score). Highest score wins when several match.
-# Technical leaders first; founders and CEOs right behind them, so a 5-person startup with no
-# VP of Engineering still resolves cleanly to its Founder/CEO or Co-Founder/CTO.
+# Technical leaders first, then founders/CEOs so small startups still resolve to a founder.
 ROLE_RULES: List[Tuple[str, str, int]] = [
     (r"\bCTO\b|Chief Technology Officer", "CTO", 100),
     (r"Chief AI Officer|\bCAIO\b", "Chief AI Officer", 96),
@@ -120,7 +118,6 @@ def parse_linkedin_hit(hit: SearchHit, company_name: str) -> Optional[Candidate]
     if not (in_title or in_snippet):
         return None
 
-    # Role text: title segments first, then "<role> at <Company>" phrasing in the snippet.
     role_source = rest
     snippet_role = re.search(
         rf"([A-Z][\w&,/ \-]{{1,60}}?)\s+(?:at|@)\s+{re.escape(company_name)}\b", hit.snippet
@@ -135,8 +132,7 @@ def parse_linkedin_hit(hit: SearchHit, company_name: str) -> Optional[Candidate]
 
     if not in_title:
         score -= 10
-    # "Former VP Eng at <Company>" in the headline, or "previously ... <Company>" in the snippet.
-    # A past role at some *other* company ("Previously at Uber") is fine.
+    # Only a past role at *this* company counts; "Previously at Uber" is fine.
     former_in_snippet = re.search(
         rf"{FORMER_RE.pattern}[^.]{{0,60}}\b{re.escape(company_name)}\b", hit.snippet, re.I
     )
@@ -156,15 +152,11 @@ def rank_candidates(hits: List[SearchHit], company_name: str) -> List[Candidate]
     return sorted(best.values(), key=lambda c: c.score, reverse=True)
 
 
-async def find_decision_makers(
-    client: httpx.AsyncClient, company_name: str
-) -> Tuple[List[Candidate], str]:
-    hits, provider = await web_search(client, linkedin_query(company_name), max_results=10)
+async def find_decision_makers(client: httpx.AsyncClient, company_name: str) -> List[Candidate]:
+    hits = await web_search(client, linkedin_query(company_name), max_results=10)
     ranked = [c for c in rank_candidates(hits, company_name) if c.score >= 50]
-    return ranked[:3], provider
+    return ranked[:3]
 
-
-# ---------------------------- email inference ----------------------------
 
 def _ascii_token(token: str) -> str:
     folded = unicodedata.normalize("NFKD", token).encode("ascii", "ignore").decode()
@@ -200,7 +192,6 @@ async def lookup_mx(client: httpx.AsyncClient, domain: str) -> Optional[List[str
     except Exception as exc:
         log.info("dnspython MX lookup for %s: %s", domain, type(exc).__name__)
 
-    # DNS-over-HTTPS fallback for hosts where UDP/53 is blocked.
     for endpoint in ("https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"):
         try:
             resp = await client.get(
@@ -227,7 +218,3 @@ def email_status(mx_hosts: Optional[List[str]]) -> str:
     if mx_hosts == []:
         return "No MX Records"
     return "Pattern Inferred"
-
-
-def is_linkedin_profile(url: str) -> bool:
-    return bool(url) and "/in/" in urlparse(url).path

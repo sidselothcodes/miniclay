@@ -4,15 +4,13 @@ from sources import contacts, github, search, website
 from sources.search import SearchHit
 
 
-# ------------------------------ website ------------------------------
-
 def test_parse_page_strips_boilerplate_and_finds_github():
     page = website.parse_page(fixture("acme_home.html"), "https://acmeai.dev/", "home")
     assert page.site_name == "Acme AI"
     assert "Introducing the Acme Agents API" in page.text
     for boilerplate in ("window.__DATA__", "cookies", "Privacy", "GitHub features", ".hero"):
         assert boilerplate not in page.text
-    assert page.github_orgs == ["acme-ai"]  # github.com/features is ignored
+    assert page.github_orgs == ["acme-ai"]
 
 
 def test_discover_subpages_prefers_links_then_common_paths():
@@ -46,12 +44,9 @@ def test_challenge_pages_are_rejected():
     assert not website.looks_like_challenge("Stripe | Financial Infrastructure", "Payments " * 400)
 
 
-# ------------------------------ github ------------------------------
-
 def test_github_org_matching_requires_domain_or_exact_name():
     assert github._org_matches({"blog": "https://linear.app", "name": "Linear"}, "linear.app", "Linear")
     assert github._org_matches({"blog": "https://www.notion.com", "name": "Notion", "public_repos": 20}, "notion.so", "Notion")
-    # Different company that merely shares a prefix:
     assert not github._org_matches({"blog": "https://ramp.network", "name": "Ramp Network", "public_repos": 30}, "ramp.com", "Ramp")
     assert "makenotion" in github._slug_guesses("notion.so", "Notion")
 
@@ -63,8 +58,6 @@ def test_describe_github():
         "github.com/acme-ai: 12 public repos · top evals (★2.4k), acme-python (★310) · TypeScript/Python"
     )
 
-
-# ------------------------------ search ------------------------------
 
 def test_parse_ddg_html_unwraps_redirects_and_skips_ads():
     hits = search.parse_ddg_html(fixture("ddg_linkedin.html"), 10)
@@ -85,8 +78,6 @@ def test_news_query_uses_rolling_years():
     assert q == '"Linear" (linear.app) (launch OR API OR AI OR funding OR enterprise OR changelog) 2025..2026'
 
 
-# ------------------------------ contacts ------------------------------
-
 def test_rank_linkedin_candidates():
     hits = search.parse_ddg_html(fixture("ddg_linkedin.html"), 10)
     ranked = contacts.rank_candidates(hits, "Acme AI")
@@ -94,8 +85,7 @@ def test_rank_linkedin_candidates():
     assert ranked[0].role == "CTO"
     assert ranked[0].linkedin_url == "https://www.linkedin.com/in/janedoe"
     names = [c.full_name for c in ranked]
-    assert "Acme AI" not in names  # company pages are not people
-    # Non-technical "Head of AI Sales" and former employees rank below real technical leaders.
+    assert "Acme AI" not in names
     assert names.index("Bob Lee") < names.index("John Smith")
     assert names.index("Bob Lee") < names.index("Priya Raman")
 
@@ -127,8 +117,7 @@ def test_small_startup_roles_resolve_to_founders():
     ]
     ranked = contacts.rank_candidates(hits, "TinyFix")
     assert [(c.full_name, c.role) for c in ranked][:1] == [("Sam Patel", "Founder & CEO")]
-    assert "Lee Wong" not in [c.full_name for c in ranked]  # "Founding Engineer" is not a founder
-    # A real CTO still outranks the CEO at larger companies.
+    assert "Lee Wong" not in [c.full_name for c in ranked]
     big = contacts.rank_candidates([
         SearchHit("Pat Lee - CEO - Acme AI", "https://www.linkedin.com/in/pat"),
         SearchHit("Jane Doe - CTO - Acme AI", "https://www.linkedin.com/in/jane"),

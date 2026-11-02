@@ -1,9 +1,5 @@
-"""GitHub org discovery (GitHub source).
-
-Order: org linked from the homepage -> slug guesses checked against the org's `blog`
-field -> GitHub user search. Repo data comes from the REST API, with an HTML scrape
-of github.com/<org> as the fallback when the API is rate-limited.
-"""
+"""GitHub org discovery: homepage link -> slug guesses verified by the org's `blog` -> search,
+with an HTML scrape of github.com/<org> when the API is rate-limited."""
 from __future__ import annotations
 
 import logging
@@ -63,7 +59,7 @@ def _org_matches(org: dict, domain: str, company_name: str) -> bool:
     blog_host = blog_host[4:] if blog_host.startswith("www.") else blog_host
     if blog_host and (blog_host == domain or blog_host.endswith("." + domain)):
         return True
-    # Same brand on another TLD (e.g. notion.so vs notion.com) only when the org name matches exactly.
+    # Same brand on another TLD (notion.so vs notion.com) needs an exact org-name match.
     name = (org.get("name") or "").strip().lower()
     same_label = not blog_host or blog_host.split(".")[0] == _domain_label(domain)
     return bool(name) and name == company_name.strip().lower() and same_label and org.get("public_repos", 0) > 0
@@ -178,14 +174,12 @@ async def discover_github(
     client: httpx.AsyncClient, domain: str, company_name: str, homepage_orgs: List[str]
 ) -> Optional[dict]:
     try:
-        # 1. An org linked from the company's own homepage is trusted as-is.
         for login in homepage_orgs[:3]:
             data = await _load_org_api(client, login)
             if data:
                 data["discovered_via"] = "homepage link"
                 return data
 
-        # 2. Slug guesses, accepted only when the org's profile points back to the domain.
         for login in _slug_guesses(domain, company_name):
             org = await _get_json(client, f"{API}/orgs/{login}")
             if org and _org_matches(org, domain, company_name):
@@ -194,7 +188,6 @@ async def discover_github(
                     data["discovered_via"] = "org profile match"
                     return data
 
-        # 3. GitHub user search for organizations.
         found = await _get_json(
             client, f"{API}/search/users", params={"q": f"{company_name} type:org", "per_page": 5}
         )
@@ -208,7 +201,6 @@ async def discover_github(
     except RateLimited:
         log.info("github api rate-limited; falling back to HTML")
 
-    # 4. HTML fallback (no API quota): homepage-linked org or the domain label.
     for login in (homepage_orgs[:1] or [_domain_label(domain)]):
         data = await _load_org_html(client, login)
         if data:
@@ -218,7 +210,6 @@ async def discover_github(
 
 
 def describe_github(data: Optional[dict]) -> str:
-    """Short human summary used by the rules fallback, e.g. 'stripe-node (★4.1k, TypeScript)'."""
     if not data:
         return ""
 

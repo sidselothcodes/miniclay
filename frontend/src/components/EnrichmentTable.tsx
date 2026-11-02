@@ -10,7 +10,6 @@ interface EnrichmentTableProps {
 
 const GRAY = { bg: '#F3F4F6', text: '#6B7280' };
 
-// Same palette as the original industry/size pills, keyed by GTM motion.
 const GTM_COLORS: [RegExp, { bg: string; text: string }][] = [
   [/usage/i, { bg: '#FEF0E8', text: '#FB7232' }],
   [/freemium|plg|product-led/i, { bg: '#ECFDF5', text: '#059669' }],

@@ -1,9 +1,4 @@
-"""WHY THEY FIT: rate how well a company matches the seller's product.
-
-The LLM makes this call when available; this module is the evidence-based fallback and an
-honesty floor. A consumer brand with no AI/LLM evidence is always "Low Fit" for an AI
-seller, whatever the LLM says.
-"""
+"""Evidence-based fit tiers: the no-LLM fallback and the honesty floor for LLM output."""
 from __future__ import annotations
 
 import re
@@ -20,7 +15,6 @@ AI_SELLER_RE = re.compile(
     r"machine learning|ML|gen ?AI|generative)\b",
     re.I,
 )
-# (label used in the reason, evidence pattern)
 AI_USAGE: List[Tuple[str, str]] = [
     ("AI agents", r"\bagents?\b|\bagentic\b"),
     ("LLM features", r"\bLLMs?\b|\bGPT[-\s]?\d|\blarge language models?\b|\bprompts?\b"),
@@ -63,7 +57,7 @@ def clean_reason(reason: str) -> str:
 
 
 def looks_consumer(evidence: str) -> bool:
-    # Two distinct storefront cues, so a B2B site that mentions "gift cards" once isn't flagged.
+    # Needs two distinct storefront cues so a B2B site mentioning "gift cards" once isn't flagged.
     return len({m.group(0).lower() for m in CONSUMER_RE.finditer(evidence)}) >= 2
 
 

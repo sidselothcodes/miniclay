@@ -12,7 +12,7 @@ from outreach import BANNED_DISPLAY, find_violations
 from schemas import EnrichedCompany
 from settings import LLM_TIMEOUT, OPENAI_MODEL
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from enrichment import SourceBundle
 
 log = logging.getLogger("miniclay.llm")
@@ -180,7 +180,7 @@ async def synthesize(bundle: "SourceBundle", seller_context: str) -> Optional[En
         return None
 
     if "low" in (result.fit_tier or "").lower():
-        result.ai_outreach = ""  # no draft for companies that don't fit
+        result.ai_outreach = ""
         return result
     first_name = (result.decision_maker.full_name or "").split()[0] if result.decision_maker.full_name else None
     issues = find_violations(result.ai_outreach, first_name)

@@ -1,4 +1,3 @@
-"""Homepage + subpage scraping (Website & Pricing sources)."""
 from __future__ import annotations
 
 import asyncio
@@ -34,7 +33,6 @@ CHALLENGE_MARKERS = (
 TEXT_LIMITS = {"home": 3500, "pricing": 4000}
 DEFAULT_TEXT_LIMIT = 2200
 
-# github.com/<org> links (org logins are 1-39 chars of letters, digits, hyphens).
 GITHUB_LINK_RE = re.compile(r"github\.com/([A-Za-z0-9][A-Za-z0-9-]{0,38})(?=[/\"'?#\s<)\\]|$)", re.I)
 GITHUB_RESERVED = {
     "about", "apps", "blog", "collections", "contact", "customer-stories", "enterprise", "events",
@@ -44,7 +42,7 @@ GITHUB_RESERVED = {
     "education", "copilot", "premium-support", "codespaces", "issues", "pulls", "search",
 }
 
-# Price tokens: "$20/user/mo", "$8 per seat per month", "€10", "2.9% + 30¢".
+# "$20/user/mo", "$8 per seat per month", "€10", "2.9% + 30¢"
 PRICE_RE = re.compile(
     r"(?:US)?[$€£]\s?\d[\d,]*(?:\.\d{1,2})?(?:\s?[kKmM]\b)?"
     r"(?:\s?(?:/|per)\s?(?:active\s)?(?:user|seat|member|editor|month|mo|year|yr|host|device)s?\b"
@@ -120,7 +118,6 @@ def extract_github_orgs(html: str) -> List[str]:
         if login.lower() in GITHUB_RESERVED:
             continue
         counts[login] += 1
-    # Most-linked org first; case-insensitive dedupe.
     seen, ordered = set(), []
     for login, _ in counts.most_common():
         if login.lower() not in seen:
@@ -226,7 +223,7 @@ def discover_subpages(domain: str, home: Optional[PageData]) -> List[Tuple[str, 
 def _is_soft_404(page: PageData, final_url: str, home: Optional[PageData]) -> bool:
     path = urlparse(final_url).path.strip("/")
     if not path:
-        return True  # redirected back to the homepage
+        return True
     if home and page.title and page.title == home.title and page.text[:300] == home.text[:300]:
         return True
     return "page not found" in page.title.lower() or page.title.strip().startswith("404")
@@ -250,7 +247,6 @@ async def fetch_subpages(
 ) -> List[PageData]:
     """Fetch up to `limit` reachable subpages, always preferring /pricing."""
     candidates = discover_subpages(domain, home)
-    # Wave 1: pricing + security candidates in parallel. Wave 2 only if we still need pages.
     first_wave = [c for c in candidates if c[0] in ("pricing", "security")]
     second_wave = [c for c in candidates if c not in first_wave]
 
@@ -265,8 +261,6 @@ async def fetch_subpages(
     ordered = [chosen[k] for k in SUBPAGE_PRIORITY if k in chosen]
     return ordered[:limit]
 
-
-# ---------- deterministic extractors (used for LLM context + rules fallback) ----------
 
 def extract_price_points(text: str, limit: int = 4) -> List[str]:
     tokens: List[str] = []
@@ -337,8 +331,6 @@ def infer_gtm_motion(pricing_text: str, home_text: str = "") -> str:
         return "Sales-Led Enterprise"
     return "Sales-Led Enterprise" if pricing_text else ""
 
-
-# ---------- startup / consumer signals (Traction:, Scale:) ----------
 
 YC_RE = re.compile(
     r"\b(?:Y\s?Combinator|YC)\b[^.\n]{0,25}?\b([WSFX]\d{2}|(?:Winter|Summer|Fall|Spring)\s+20\d{2})\b"

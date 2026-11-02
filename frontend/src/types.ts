@@ -3,7 +3,7 @@ export interface DecisionMaker {
   role: string;
   linkedin_url: string;
   work_email: string;
-  email_status: string; // "MX Verified" | "Pattern Inferred" | "No MX Records" | "Unknown"
+  email_status: 'MX Verified' | 'Pattern Inferred' | 'No MX Records' | 'Unknown';
 }
 
 export interface EnrichmentResult {
@@ -13,16 +13,11 @@ export interface EnrichmentResult {
   gtm_motion: string | null;
   pricing_tier_summary: string | null;
   tech_and_live_signals: string[];
-  fit_tier?: string | null; // "Strong Fit" | "Moderate Fit" | "Low Fit"
+  fit_tier?: 'Strong Fit' | 'Moderate Fit' | 'Low Fit' | null;
   fit_reason?: string | null;
   decision_maker: DecisionMaker | null;
   ai_outreach: string | null;
-  sources_used: string[];
-  source_urls?: Record<string, string[]>;
   email_alternates?: string[];
-  fallbacks?: string[];
-  generated_by?: string;
-  cached?: boolean;
   snapshot_date?: string | null;
   status: 'success' | 'error' | 'loading';
   error?: string | null;

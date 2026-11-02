@@ -8,7 +8,6 @@ interface CopyButtonProps {
   children?: React.ReactNode;
 }
 
-/** Copies `text`; briefly swaps its label for "Copied ✓". */
 const CopyButton: React.FC<CopyButtonProps> = ({ text, className = 'copy-btn', title, children }) => {
   const [copied, setCopied] = useState(false);
 

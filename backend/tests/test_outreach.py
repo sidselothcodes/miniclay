@@ -79,8 +79,6 @@ def test_composed_outreach_is_short_and_human(context):
     assert not has_dash(text)
 
 
-# ------------------------------ fit ------------------------------
-
 def test_normalize_tier():
     assert normalize_tier("strong") == STRONG
     assert normalize_tier("Moderate fit") == MODERATE

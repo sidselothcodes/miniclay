@@ -43,7 +43,6 @@ function loadingRow(domain: string): EnrichmentResult {
     tech_and_live_signals: [],
     decision_maker: null,
     ai_outreach: null,
-    sources_used: [],
     status: 'loading',
   };
 }
@@ -51,7 +50,6 @@ function loadingRow(domain: string): EnrichmentResult {
 function App() {
   const [input, setInput] = useState(DEFAULT_DOMAINS);
   const [sellerContext, setSellerContext] = useState(DEFAULT_SELLER_CONTEXT);
-  // Pre-loaded rows for the default domains, so the table is populated on first paint.
   const [results, setResults] = useState<EnrichmentResult[]>(SEED);
   const [showingSnapshot, setShowingSnapshot] = useState(SEED.length > 0);
   const [isLoading, setIsLoading] = useState(false);
@@ -71,7 +69,6 @@ function App() {
     const update = (index: number, row: EnrichmentResult) =>
       setResults((prev) => prev.map((r, i) => (i === index ? row : r)));
 
-    // Small worker pool: rows fill in as soon as each domain finishes.
     let next = 0;
     const worker = async () => {
       while (next < domains.length) {

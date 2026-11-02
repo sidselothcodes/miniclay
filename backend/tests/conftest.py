@@ -47,13 +47,12 @@ GITHUB_REPOS = [
 ]
 
 
-# Fake internet: company sites, GitHub API, DuckDuckGo HTML results, DNS-over-HTTPS.
 SITES = {
     "acmeai.dev": {"/": "acme_home.html", "/pricing": "acme_pricing.html", "/trust": "acme_security.html"},
     "tinyfix.ai": {"/": "tinyfix_home.html"},
     "sweetcrumb.co": {"/": "bakery_home.html"},
 }
-SEARCH_RESULTS = {  # (company name in query, kind) -> fixture
+SEARCH_RESULTS = {
     ("Acme AI", "linkedin"): "ddg_linkedin.html",
     ("Acme AI", "news"): "ddg_news.html",
     ("TinyFix", "linkedin"): "ddg_tinyfix_linkedin.html",

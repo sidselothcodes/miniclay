@@ -1,9 +1,4 @@
-"""Pydantic models for the structured enrichment output.
-
-`DecisionMaker` and `EnrichedCompany` are the strict schema the LLM must fill.
-`EnrichmentRow` is what the API returns: the same fields plus pipeline metadata.
-Optional/List typing is used (not `X | None`) so this runs on Python 3.9.
-"""
+"""LLM output schema (EnrichedCompany) and API row (EnrichmentRow). Uses Optional/List for Python 3.9."""
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -47,9 +42,9 @@ class EnrichmentRow(EnrichedCompany):
     status: str = "success"
     error: Optional[str] = None
     cached: bool = False
-    generated_by: str = "rules"  # "llm" | "rules" | "research-snapshot"
+    generated_by: str = "rules"
     email_alternates: List[str] = []
     source_urls: Dict[str, List[str]] = {}
-    fallbacks: List[str] = []  # fields filled from curated reference data
+    fallbacks: List[str] = []
     snapshot_date: Optional[str] = None
     elapsed_ms: Optional[int] = None

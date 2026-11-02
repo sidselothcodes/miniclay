@@ -1,9 +1,4 @@
-"""Guardrails for the OUTREACH DRAFT column + a deterministic composer used without an LLM.
-
-Target style: "Hey Emily, saw you're rolling out agent checkout on Link." then one plain
-sentence about the headache the seller solves, then a low-pressure question. 30-40 words,
-no em-dashes, no dates or feature lists recited back at the reader.
-"""
+"""Outreach draft guardrails and the no-LLM composer."""
 from __future__ import annotations
 
 import re
@@ -11,10 +6,9 @@ from typing import List, Optional, Tuple
 
 MIN_WORDS = 20
 TARGET_MAX_WORDS = 40
-MAX_WORDS = 45  # hard ceiling; the prompt and composer aim for 30-40
+MAX_WORDS = 45
 MAX_SENTENCES = 3
 
-# (pattern, safe replacement). Patterns are case-insensitive.
 BANNED: List[Tuple[str, str]] = [
     (r"\bI (?:really |truly )?admire\b", "I noticed"),
     (r"\bempowering\b", "helping"),
@@ -43,7 +37,7 @@ BANNED_DISPLAY = [
     "leverage", "excited", "unlock",
 ]
 
-# Em-dash, double hyphen, or a spaced en-dash used as a dash.
+# Em-dash, double hyphen, or a spaced en-dash.
 DASH_RE = re.compile(r"\s*(?:—|-{2,}|\s–\s)\s*")
 GREETING_RE = re.compile(r"^\s*(?:hey|hi|hello)\s+[^\s,—–-]+\s*(?:,|—|–|-{1,2})?\s*", re.I)
 CASUAL_OPENERS = {"saw", "been", "noticed", "curious", "seeing", "caught", "read", "looks", "quick", "loved"}
@@ -89,7 +83,6 @@ def find_violations(text: str, first_name: Optional[str]) -> List[str]:
 
 
 def sanitize(text: str, first_name: Optional[str]) -> str:
-    """Last-resort cleanup: banned phrasing, dashes, asides, greeting, sentence cap."""
     for pattern, replacement in BANNED:
         text = re.sub(pattern, replacement, text, flags=re.I)
     body = GREETING_RE.sub("", text.replace("!", "."), count=1)
@@ -105,8 +98,6 @@ def sanitize(text: str, first_name: Optional[str]) -> str:
     return f"{greeting} {' '.join(sentences)}".strip()
 
 
-# ---------------------------- rules-based composer ----------------------------
-
 PAIN_RE = re.compile(
     r"\b(?:catch(?:es)?|detect(?:s)?|flag(?:s)?|prevent(?:s)?|find(?:s)?|monitor(?:s)?|"
     r"track(?:s)?|reduce(?:s)?|eliminate(?:s)?|fix(?:es)?|stop(?:s)?)\s+(.+?)(?:\s+(?:in|across|for)\s+.+?)?\.?$",
@@ -121,8 +112,7 @@ HEADLINE_VERBS = {
 
 
 def derive_pain(seller_context: str) -> Optional[str]:
-    """'...engine that catches hallucinations, retrieval regressions, and latency spikes in prod' ->
-    'hallucinations, retrieval regressions, and latency spikes'."""
+    """'...engine that catches hallucinations and latency spikes in prod' -> 'hallucinations and latency spikes'."""
     match = PAIN_RE.search(seller_context.strip())
     if not match:
         return None
@@ -147,7 +137,7 @@ def _value_sentence(seller_context: str) -> str:
 
 
 def casual_from_headline(company_name: str, headline: str) -> str:
-    """'Acme AI launches Agents API for replaying traces - TechCrunch' -> 'saw you just launched Agents API for replaying traces'."""
+    """'Acme AI launches Agents API - TechCrunch' -> 'saw you just launched Agents API'."""
     headline = re.sub(r"\s+[|\-–—]\s+[^|\-–—]{2,40}$", "", headline).strip().rstrip(".")
     rest = re.sub(rf"^{re.escape(company_name)}('s)?\s+", "", headline, flags=re.I)
     for verb, phrase in HEADLINE_VERBS.items():

@@ -1,4 +1,3 @@
-"""Shared async HTTP helpers."""
 from __future__ import annotations
 
 import logging
@@ -14,7 +13,6 @@ MAX_HTML_CHARS = 1_500_000
 
 
 def make_client() -> httpx.AsyncClient:
-    """One pooled client per request batch; each call still sets its own timeout."""
     return httpx.AsyncClient(
         follow_redirects=True,
         headers=BROWSER_HEADERS,
@@ -38,7 +36,7 @@ async def fetch_html(
     """GET a page. Returns (final_url, html) or None on any failure."""
     try:
         resp = await client.get(url, timeout=timeout)
-    except Exception as exc:  # timeouts, DNS, TLS, proxy refusals, etc.
+    except Exception as exc:
         log.info("fetch failed %s: %s", url, type(exc).__name__)
         return None
     if resp.status_code >= 400:

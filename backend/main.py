@@ -34,7 +34,6 @@ def load_seed_rows() -> list:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Pre-load the default demo rows so the first "Enrich" on them is instant.
     rows = load_seed_rows()
     if rows:
         loaded = get_cache().seed(rows, DEFAULT_SELLER_CONTEXT)

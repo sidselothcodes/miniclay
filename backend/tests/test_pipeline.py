@@ -21,7 +21,7 @@ def assert_adaptive_signals(signals):
 
 def assert_human_outreach(text, first_name):
     assert text.startswith(f"Hey {first_name}, ")
-    assert not has_dash(text), text  # no em-dash, en-dash or double hyphen
+    assert not has_dash(text), text
     assert word_count(text) <= 45, text
     assert find_violations(text, first_name) == [], text
 
@@ -44,7 +44,7 @@ async def test_live_path_uses_all_five_sources(acme_client):
     launch, stack, trust = row["tech_and_live_signals"]
     assert launch.startswith("Launch: Acme AI launches Agents API")
     assert stack.startswith("Stack: github.com/acme-ai: 12 public repos · top evals (★2.4k)")
-    assert "old-fork" not in stack  # forks are excluded
+    assert "old-fork" not in stack
     assert trust == "Trust: SOC 2 Type II, ISO 27001, HIPAA"
 
     assert row["fit_tier"] == "Strong Fit"
@@ -74,7 +74,7 @@ async def test_consumer_brand_is_low_fit_with_no_draft(acme_client):
     assert row["status"] == "success"
     assert row["fit_tier"] == "Low Fit"
     assert row["fit_reason"] == "Consumer retail brand with no customer-facing LLM workflows in production."
-    assert row["ai_outreach"] == ""  # no pitch to companies that don't fit
+    assert row["ai_outreach"] == ""
     assert row["decision_maker"]["full_name"] == "Not found"
     assert row["gtm_motion"] == "Consumer D2C"
     assert_adaptive_signals(row["tech_and_live_signals"])
@@ -100,7 +100,7 @@ async def test_llm_cannot_manufacture_a_fit_for_a_consumer_brand(acme_client):
 async def test_blocked_network_falls_back_to_reference_data(offline_client):
     row = await enrichment.enrich_company("linear.app", DEFAULT_SELLER_CONTEXT, client=offline_client, use_cache=False)
     assert row["status"] == "success"
-    assert row["sources_used"] == []  # nothing was fetched live, so no sources are claimed
+    assert row["sources_used"] == []
     assert row["decision_maker"]["full_name"] == "Tuomas Artman"
     assert row["decision_maker"]["email_status"] == "Pattern Inferred"
     assert {"decision_maker", "fit"} <= set(row["fallbacks"])
@@ -169,10 +169,8 @@ def test_seed_rows_are_valid_and_in_sync():
         assert any(ch.isdigit() for ch in row["pricing_tier_summary"])
         assert "AI" not in row["sources_used"]
         assert_adaptive_signals(row["tech_and_live_signals"])
-        # WHY THEY FIT is populated.
         assert row["fit_tier"] in TIERS
         assert row["fit_reason"] and len(row["fit_reason"].split()) <= 20
-        # OUTREACH DRAFT: no em-dash / double hyphen, max 45 words, human greeting.
         assert_human_outreach(row["ai_outreach"], dm["full_name"].split()[0])
 
 

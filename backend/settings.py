@@ -1,4 +1,3 @@
-"""Shared configuration for the MiniClay enrichment backend."""
 from __future__ import annotations
 
 import os
@@ -22,10 +21,9 @@ MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "5"))
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-# Optional: raises GitHub's API rate limit from 60 to 5,000 requests/hour.
+# Optional; raises GitHub's API limit from 60 to 5,000 requests/hour.
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or None
 
-# Timeouts (seconds). Every source has its own budget so one slow page never stalls a row.
 PAGE_TIMEOUT = float(os.getenv("PAGE_TIMEOUT", "8"))
 SEARCH_TIMEOUT = float(os.getenv("SEARCH_TIMEOUT", "12"))
 DNS_TIMEOUT = float(os.getenv("DNS_TIMEOUT", "4"))
@@ -36,7 +34,6 @@ CACHE_TTL_HOURS = float(os.getenv("CACHE_TTL_HOURS", "168"))
 DB_PATH = os.getenv("MINICLAY_DB", str(BASE_DIR / "miniclay.db"))
 SEED_PATH = BASE_DIR / "data" / "seed_results.json"
 
-# Source labels shown as badges in the UI. "AI" is intentionally not a source.
 SOURCE_WEBSITE = "Website"
 SOURCE_PRICING = "Pricing"
 SOURCE_GITHUB = "GitHub"

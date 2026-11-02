@@ -21,7 +21,7 @@ export async function copyText(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    // Fallback for non-secure contexts (plain http) where the Clipboard API is unavailable.
+    // Clipboard API is unavailable on plain http.
     const area = document.createElement('textarea');
     area.value = text;
     area.style.position = 'fixed';

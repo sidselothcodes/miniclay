@@ -1,12 +1,5 @@
-"""Free web search with a fallback chain (News + LinkedIn sources).
-
-1. `ddgs` / `duckduckgo-search` library (DDGS), run in a worker thread.
-2. DuckDuckGo's HTML endpoint, scraped with httpx.
-3. Bing's HTML results page, scraped with httpx.
-
-A provider that errors (e.g. rate-limited on a cloud IP) is skipped for a short
-cooldown so the remaining domains in a batch don't each wait on it.
-"""
+"""Free web search: DDGS library -> DuckDuckGo HTML -> Bing HTML. A provider that errors
+(e.g. rate-limited on a cloud IP) is skipped for COOLDOWN_SECONDS."""
 from __future__ import annotations
 
 import asyncio
@@ -35,17 +28,16 @@ class SearchHit:
     url: str
     snippet: str = ""
     date: str = ""
-    source: str = ""
 
 
 def _ddgs_class():
     try:
-        from ddgs import DDGS  # maintained package name (Python 3.10+)
+        from ddgs import DDGS  # Python 3.10+
         return DDGS
     except ImportError:
         pass
     try:
-        from duckduckgo_search import DDGS  # legacy name (Python 3.9)
+        from duckduckgo_search import DDGS  # Python 3.9
         return DDGS
     except ImportError:
         return None
@@ -73,7 +65,6 @@ def _ddgs_news_sync(query: str, max_results: int) -> List[SearchHit]:
             url=r.get("url") or r.get("href", ""),
             snippet=r.get("body", ""),
             date=(r.get("date") or "")[:10],
-            source=r.get("source", ""),
         )
         for r in rows
     ]
@@ -147,8 +138,8 @@ async def _bing_html(client: httpx.AsyncClient, query: str, max_results: int) ->
 
 async def web_search(
     client: httpx.AsyncClient, query: str, max_results: int = 6, news: bool = False
-) -> Tuple[List[SearchHit], str]:
-    """Run `query` through the provider chain. Returns (hits, provider_name)."""
+) -> List[SearchHit]:
+    """Run `query` through the provider chain; returns hits from the first provider that answers."""
     sync_fn = _ddgs_news_sync if news else _ddgs_text_sync
     providers: List[Tuple[str, Callable]] = [
         ("ddgs-news" if news else "ddgs", lambda: asyncio.to_thread(sync_fn, query, max_results)),
@@ -169,8 +160,9 @@ async def web_search(
             continue
         hits = [h for h in hits if h.url.startswith("http")]
         if hits:
-            return hits, name
-    return [], "none"
+            log.info("search provider %s answered %r", name, query[:60])
+            return hits
+    return []
 
 
 def _mentions(company_name: str, hit: SearchHit) -> bool:
@@ -186,14 +178,10 @@ def news_query(company_name: str, domain: str, today: Optional[dt.date] = None) 
     )
 
 
-async def find_news(client: httpx.AsyncClient, company_name: str, domain: str) -> Tuple[List[SearchHit], str]:
-    hits, provider = await web_search(client, news_query(company_name, domain), max_results=8)
+async def find_news(client: httpx.AsyncClient, company_name: str, domain: str) -> List[SearchHit]:
+    hits = await web_search(client, news_query(company_name, domain), max_results=8)
     if len(hits) < 3:
-        extra, extra_provider = await web_search(
-            client, f'"{company_name}" launch OR AI OR funding', max_results=6, news=True
-        )
-        hits += extra
-        provider = provider if provider != "none" else extra_provider
+        hits += await web_search(client, f'"{company_name}" launch OR AI OR funding', max_results=6, news=True)
 
     seen, relevant = set(), []
     for hit in hits:
@@ -202,4 +190,4 @@ async def find_news(client: httpx.AsyncClient, company_name: str, domain: str) -
             continue
         seen.add(key)
         relevant.append(hit)
-    return relevant[:5], provider
+    return relevant[:5]

@@ -1,12 +1,5 @@
-"""Enrichment orchestrator.
-
-Per domain:
-  stage 1 (parallel): homepage fetch + MX lookup
-  stage 2 (parallel): subpages (/pricing first), GitHub org, news search, LinkedIn search
-  synthesis: OpenAI structured output when OPENAI_API_KEY is set, otherwise a rules
-  engine; either way the decision maker, emails and sources are grounded in what
-  the pipeline actually fetched.
-"""
+"""Per-domain pipeline: homepage + MX, then subpages/GitHub/news/LinkedIn in parallel, then
+LLM (or rules) synthesis grounded in what was actually fetched."""
 from __future__ import annotations
 
 import asyncio
@@ -39,7 +32,6 @@ from sources.http import make_client
 
 log = logging.getLogger("miniclay.enrichment")
 
-# KEY SIGNALS: each bullet's prefix adapts to what exists for the company.
 POSITION_PREFIXES = [("Launch", "Product"), ("Stack", "Traction"), ("Trust", "Scale")]
 LEGACY_PREFIXES = {
     "trigger": "Launch", "news": "Launch", "stack/github": "Stack", "github": "Stack", "tech": "Stack",
@@ -76,7 +68,6 @@ class SourceBundle:
     linkedin: List[contacts.Candidate] = field(default_factory=list)
     mx_hosts: Optional[List[str]] = None
     compliance: List[str] = field(default_factory=list)
-    providers: Dict[str, str] = field(default_factory=dict)
 
     @property
     def pricing_page(self) -> Optional[website.PageData]:
@@ -87,7 +78,6 @@ class SourceBundle:
         return bool(self.homepage or self.subpages or self.github or self.news or self.linkedin or self.kb)
 
     def decision_maker_options(self) -> List[dict]:
-        """Live LinkedIn candidates first, then the curated reference contact."""
         status = contacts.email_status(self.mx_hosts)
         options: List[dict] = []
         for cand in self.linkedin:
@@ -140,8 +130,8 @@ async def collect_sources(client: httpx.AsyncClient, domain: str) -> SourceBundl
     subpages, gh, news, linkedin = await asyncio.gather(
         _guard(website.fetch_subpages(client, domain, home), "subpages", []),
         _guard(github.discover_github(client, domain, company_name, home.github_orgs if home else []), "github", None),
-        _guard(search.find_news(client, company_name, domain), "news", ([], "none")),
-        _guard(contacts.find_decision_makers(client, company_name), "linkedin", ([], "none")),
+        _guard(search.find_news(client, company_name, domain), "news", []),
+        _guard(contacts.find_decision_makers(client, company_name), "linkedin", []),
     )
     bundle = SourceBundle(
         domain=domain,
@@ -150,17 +140,14 @@ async def collect_sources(client: httpx.AsyncClient, domain: str) -> SourceBundl
         homepage=home if home and home.is_useful else None,
         subpages=subpages,
         github=gh,
-        news=news[0],
-        linkedin=linkedin[0],
+        news=news,
+        linkedin=linkedin,
         mx_hosts=mx_hosts,
-        providers={"news": news[1], "linkedin": linkedin[1]},
     )
     corpus = "\n".join([home.text if home else ""] + [p.text for p in subpages])
     bundle.compliance = website.detect_compliance(corpus)
     return bundle
 
-
-# ------------------------------- rules synthesis -------------------------------
 
 def _first_sentence(text: str, max_words: int = 30) -> str:
     sentence = re.split(r"(?<=[.!?])\s", text.strip())[0]
@@ -178,7 +165,7 @@ def _clean_headline(title: str) -> str:
 
 
 def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
-    """Deterministic fields. Returns (fields, fallbacks_from_reference, live_sources_used)."""
+    """Returns (fields, fields filled from reference data, live sources used)."""
     kb = bundle.kb or {}
     kb_signals = kb.get("signals", ["", "", ""])
     fallbacks: List[str] = []
@@ -218,7 +205,6 @@ def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
         if not gtm:
             gtm = "Consumer D2C" if home and looks_consumer(f"{home.title}\n{home.text}") else "Unknown"
 
-    # Signals: live evidence first, curated reference second; prefixes adapt to the company.
     live_text = "\n".join(
         [home.text if home else ""] + [p.text for p in bundle.subpages] + [f"{h.title}. {h.snippet}" for h in bundle.news]
     )
@@ -272,13 +258,11 @@ def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
 
 
 def _casual_mention(bundle: SourceBundle) -> str:
-    """4-8 casual words for sentence 1 of the outreach ("saw you're rolling out ...")."""
     if bundle.kb and bundle.kb.get("casual"):
         return bundle.kb["casual"]
     if bundle.news:
         return casual_from_headline(bundle.company_name, _clean_headline(bundle.news[0].title))
     if bundle.homepage:
-        # "Introducing the TinyFix voice agent: ..." -> "saw you're launching the TinyFix voice agent"
         for line in [*bundle.homepage.headings, *website.signal_lines(bundle.homepage.text)]:
             match = re.match(r"^\s*(?:introducing|meet|announcing)\s+(.{3,60}?)(?:[:,.!]|\s[-\u2013\u2014]\s|$)", line, re.I)
             if match:
@@ -337,7 +321,7 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
     rules, fallbacks, used = rules_fields(bundle)
     options = bundle.decision_maker_options()
 
-    # Decision maker: whatever the LLM picked must be one of the fetched candidates.
+    # The LLM may only pick a decision maker the pipeline actually found.
     chosen = None
     if llm_result:
         wanted = re.sub(r"\s+", " ", llm_result.decision_maker.full_name or "").strip().lower()
@@ -385,7 +369,7 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
         outreach = ""
         generated_by = "rules"
 
-    # WHY THEY FIT. Curated fit only applies to the default pitch; anything else is judged on evidence.
+    # Curated fit only applies to the default pitch; anything else is judged on evidence.
     evidence = fit_evidence(bundle)
     default_pitch = _same_context(seller_context, DEFAULT_SELLER_CONTEXT)
     kb = bundle.kb or {}
@@ -398,13 +382,12 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
         fit_tier = normalize_tier(llm_result.fit_tier) or rules_tier
         fit_reason = clean_reason(llm_result.fit_reason) or rules_reason
         if fit_tier != LOW and is_consumer_without_ai(seller_context, evidence):
-            fit_tier, fit_reason = rules_tier, rules_reason  # honesty floor: no manufactured AI fit
+            fit_tier, fit_reason = rules_tier, rules_reason  # never let the LLM manufacture an AI fit
     else:
         fit_tier, fit_reason = rules_tier, rules_reason
         if kb_fit:
             fallbacks.append("fit")
 
-    # OUTREACH DRAFT: none for low-fit companies; otherwise human, short, dash-free.
     if fit_tier == LOW:
         outreach = ""
     else:
@@ -485,7 +468,7 @@ async def enrich_company(
         if use_cache:
             get_cache().set(key, domain, payload)
         return payload
-    except Exception as exc:  # never let one domain break the batch
+    except Exception as exc:  # one bad domain must not break the batch
         log.exception("enrichment failed for %s", domain)
         return error_row(domain, f"enrichment failed ({type(exc).__name__})")
     finally:

@@ -1,13 +1,5 @@
-"""Curated, manually verified reference data for the default demo domains.
-
-The live pipeline uses this only to fill gaps when a source is blocked or
-rate-limited (common on cloud IPs), so the demo never renders empty cells.
-Fields filled from here are listed in the row's `fallbacks`, and they never
-add a badge to `sources_used`. Verified via web research on VERIFIED_AT.
-
-`fit` and `outreach_default` are written for the default seller context
-(settings.DEFAULT_SELLER_CONTEXT); any other context is assessed live.
-"""
+"""Manually verified reference data for the default domains, used only to fill gaps when live
+sources are blocked. `fit` and `outreach_default` apply to the default seller context only."""
 from __future__ import annotations
 
 from typing import Dict, Optional
@@ -183,7 +175,7 @@ KNOWLEDGE: Dict[str, dict] = {
         "decision_maker": {
             "full_name": "Rahul Sengottuvelu",
             "role": "CTO (prev. Head of Applied AI)",
-            # No public profile URL could be verified, so we link a LinkedIn people search instead.
+            # No public profile URL could be verified, so this is a LinkedIn people search.
             "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Rahul+Sengottuvelu+Ramp",
         },
         "casual": "saw Ramp's accounting agents are handling invoice close and vendor payouts directly now",
