@@ -6,8 +6,6 @@ export interface DecisionMaker {
   email_status: string; // "MX Verified" | "Pattern Inferred" | "No MX Records" | "Unknown"
 }
 
-export type SourceName = 'Website' | 'Pricing' | 'GitHub' | 'News' | 'LinkedIn';
-
 export interface EnrichmentResult {
   domain: string;
   company_name: string | null;
@@ -15,6 +13,8 @@ export interface EnrichmentResult {
   gtm_motion: string | null;
   pricing_tier_summary: string | null;
   tech_and_live_signals: string[];
+  fit_tier?: string | null; // "Strong Fit" | "Moderate Fit" | "Low Fit"
+  fit_reason?: string | null;
   decision_maker: DecisionMaker | null;
   ai_outreach: string | null;
   sources_used: string[];

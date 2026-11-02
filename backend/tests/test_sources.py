@@ -116,6 +116,34 @@ def test_parse_title_formats():
         assert cand.linkedin_url.startswith("https://www.linkedin.com/in/")
 
 
+def test_small_startup_roles_resolve_to_founders():
+    query = contacts.linkedin_query("TinyFix")
+    for role in ('"Founder"', '"Co-Founder"', '"CEO"', '"CTO"', '"Head of AI"', '"VP Engineering"'):
+        assert role in query
+    hits = [
+        SearchHit("Lee Wong - Founding Engineer - TinyFix | LinkedIn", "https://www.linkedin.com/in/lee"),
+        SearchHit("Sam Patel - Founder & CEO - TinyFix | LinkedIn", "https://www.linkedin.com/in/sam"),
+        SearchHit("Kai Ito - Engineer - TinyFix", "https://www.linkedin.com/in/kai", "CEO at TinyFix."),
+    ]
+    ranked = contacts.rank_candidates(hits, "TinyFix")
+    assert [(c.full_name, c.role) for c in ranked][:1] == [("Sam Patel", "Founder & CEO")]
+    assert "Lee Wong" not in [c.full_name for c in ranked]  # "Founding Engineer" is not a founder
+    # A real CTO still outranks the CEO at larger companies.
+    big = contacts.rank_candidates([
+        SearchHit("Pat Lee - CEO - Acme AI", "https://www.linkedin.com/in/pat"),
+        SearchHit("Jane Doe - CTO - Acme AI", "https://www.linkedin.com/in/jane"),
+    ], "Acme AI")
+    assert big[0].full_name == "Jane Doe"
+
+
+def test_detect_traction_and_scale():
+    text = website.parse_page(fixture("tinyfix_home.html"), "https://tinyfix.ai/", "home").text
+    assert website.detect_traction(text) == "Y Combinator (W25) · actively hiring"
+    assert website.detect_scale(text) == "Used by 120 HVAC shops"
+    assert website.detect_traction("We raised $3M seed led by Foo Ventures to grow.").startswith("raised $3M")
+    assert website.detect_traction("Nothing to see here.") == ""
+
+
 def test_parse_rejects_non_people_and_other_companies():
     assert contacts.parse_linkedin_hit(SearchHit("Linear Team - Linear", "https://www.linkedin.com/company/linearapp"), "Linear") is None
     assert contacts.parse_linkedin_hit(SearchHit("Dan Lines - Co-founder and COO at LinearB", "https://www.linkedin.com/in/dan-lines/"), "Linear") is None

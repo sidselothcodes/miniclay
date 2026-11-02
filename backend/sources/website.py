@@ -336,3 +336,56 @@ def infer_gtm_motion(pricing_text: str, home_text: str = "") -> str:
     if CUSTOM_PRICING_RE.search(blob):
         return "Sales-Led Enterprise"
     return "Sales-Led Enterprise" if pricing_text else ""
+
+
+# ---------- startup / consumer signals (Traction:, Scale:) ----------
+
+YC_RE = re.compile(
+    r"\b(?:Y\s?Combinator|YC)\b[^.\n]{0,25}?\b([WSFX]\d{2}|(?:Winter|Summer|Fall|Spring)\s+20\d{2})\b"
+    r"|\bYC\s?([WSFX]\d{2})\b",
+    re.I,
+)
+FUNDING_RE = re.compile(
+    r"\b(?:rais(?:ed|es|ing)|closes?|closed|secur(?:ed|es)|lands?)\b[^.\n]{0,30}?"
+    r"[$€£]\s?\d[\d.,]*\s?(?:[MBK]\b|million|billion)[^.\n]{0,40}",
+    re.I,
+)
+ROUND_RE = re.compile(r"\b(pre-seed|seed round|seed funding|Series [A-F])\b", re.I)
+BACKER_RE = re.compile(r"\bbacked by ([A-Z][\w&.' ]{2,60}?)(?:[.,\n]|$)")
+HIRING_RE = re.compile(r"\bwe(?:'re|’re| are) hiring\b|\bopen roles\b|\bjoin (?:our|the) team\b", re.I)
+SCALE_RE = re.compile(
+    r"\b(?:(?:over|more than|trusted by|used by|serving|powering|loved by|helping)\s+)?"
+    r"\d[\d,.]*\s?(?:k|K|M|B|million|billion)?\+?\s+"
+    r"(?:[A-Za-z&/-]+\s){0,2}?"
+    r"(?:customers|users|teams|companies|businesses|developers|shops|stores|merchants|downloads|"
+    r"members|clinics|restaurants|contractors|brands|creators|patients|orders|transactions)\b",
+    re.I,
+)
+
+
+def detect_traction(text: str) -> str:
+    """'Backed by Y Combinator (W25) · raised $3M seed' style summary, or ''."""
+    parts: List[str] = []
+    yc = YC_RE.search(text)
+    if yc:
+        parts.append(f"Y Combinator ({(yc.group(1) or yc.group(2)).upper()})")
+    else:
+        backer = BACKER_RE.search(text)
+        if backer:
+            parts.append(f"backed by {backer.group(1).strip()}")
+    funding = FUNDING_RE.search(text)
+    if funding:
+        parts.append(re.sub(r"\s+", " ", funding.group(0)).strip(" ,.")[:70])
+    elif ROUND_RE.search(text):
+        parts.append(f"{ROUND_RE.search(text).group(1)} stage")
+    if HIRING_RE.search(text):
+        parts.append("actively hiring")
+    return " · ".join(parts[:2])
+
+
+def detect_scale(text: str) -> str:
+    match = SCALE_RE.search(text)
+    if not match:
+        return ""
+    phrase = re.sub(r"\s+", " ", match.group(0)).strip()
+    return phrase[:1].upper() + phrase[1:]

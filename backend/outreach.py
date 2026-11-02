@@ -1,11 +1,17 @@
-"""Guardrails for the AI OUTREACH column + a deterministic composer used without an LLM."""
+"""Guardrails for the OUTREACH DRAFT column + a deterministic composer used without an LLM.
+
+Target style: "Hey Emily, saw you're rolling out agent checkout on Link." then one plain
+sentence about the headache the seller solves, then a low-pressure question. 30-40 words,
+no em-dashes, no dates or feature lists recited back at the reader.
+"""
 from __future__ import annotations
 
 import re
 from typing import List, Optional, Tuple
 
-MIN_WORDS = 45
-MAX_WORDS = 70  # 55-65 target; small tolerance so the greeting isn't the deciding word
+MIN_WORDS = 20
+TARGET_MAX_WORDS = 40
+MAX_WORDS = 45  # hard ceiling; the prompt and composer aim for 30-40
 MAX_SENTENCES = 3
 
 # (pattern, safe replacement). Patterns are case-insensitive.
@@ -37,15 +43,23 @@ BANNED_DISPLAY = [
     "leverage", "excited", "unlock",
 ]
 
+# Em-dash, double hyphen, or a spaced en-dash used as a dash.
+DASH_RE = re.compile(r"\s*(?:—|-{2,}|\s–\s)\s*")
+GREETING_RE = re.compile(r"^\s*(?:hey|hi|hello)\s+[^\s,—–-]+\s*(?:,|—|–|-{1,2})?\s*", re.I)
+CASUAL_OPENERS = {"saw", "been", "noticed", "curious", "seeing", "caught", "read", "looks", "quick", "loved"}
+
 
 def word_count(text: str) -> int:
     return len([w for w in re.split(r"\s+", text.strip()) if re.search(r"\w", w)])
 
 
 def split_sentences(text: str) -> List[str]:
-    body = re.sub(r"^\s*Hi [^—\-,]+[—\-,]\s*", "", text.strip())
-    parts = re.split(r"(?<=[.?])\s+(?=[A-Z\"“])", body)
+    parts = re.split(r"(?<=[.?!])\s+(?=[A-Z\"“])", text.strip())
     return [p for p in parts if p.strip()]
+
+
+def has_dash(text: str) -> bool:
+    return bool(DASH_RE.search(text))
 
 
 def find_violations(text: str, first_name: Optional[str]) -> List[str]:
@@ -56,26 +70,38 @@ def find_violations(text: str, first_name: Optional[str]) -> List[str]:
             issues.append(f'banned phrase "{match.group(0)}"')
     if "!" in text:
         issues.append("exclamation mark")
-    if first_name and not re.match(rf"^\s*Hi {re.escape(first_name)}\s*[—\-,]", text):
-        issues.append(f'must start with "Hi {first_name} —"')
+    if has_dash(text):
+        issues.append("em-dash or double hyphen (use a comma or period)")
+    if first_name and not re.match(rf"^Hey {re.escape(first_name)},\s", text):
+        issues.append(f'must start with "Hey {first_name},"')
+    if re.search(r"\b(?:19|20)\d{2}\b", text):
+        issues.append("mentions a date/year (don't recite their news back to them)")
+    if "(" in text:
+        issues.append("parenthetical aside")
     words = word_count(text)
     if words > MAX_WORDS:
-        issues.append(f"too long ({words} words, max 65)")
+        issues.append(f"too long ({words} words, aim for 30-40)")
     if words < MIN_WORDS:
-        issues.append(f"too short ({words} words, min 55)")
+        issues.append(f"too short ({words} words, aim for 30-40)")
     if len(split_sentences(text)) > MAX_SENTENCES:
         issues.append("more than 3 sentences")
     return issues
 
 
 def sanitize(text: str, first_name: Optional[str]) -> str:
-    """Last-resort cleanup: strip banned phrasing, fix the greeting, cap to 3 sentences."""
+    """Last-resort cleanup: banned phrasing, dashes, asides, greeting, sentence cap."""
     for pattern, replacement in BANNED:
         text = re.sub(pattern, replacement, text, flags=re.I)
-    text = text.replace("!", ".")
-    text = re.sub(r"\s{2,}", " ", text).replace(" .", ".").replace(" ,", ",").strip()
-    sentences = split_sentences(text)[:MAX_SENTENCES]
-    greeting = f"Hi {first_name} —" if first_name else "Hi there —"
+    body = GREETING_RE.sub("", text.replace("!", "."), count=1)
+    body = DASH_RE.sub(", ", body)
+    body = re.sub(r"\s*\([^)]*\)", "", body)
+    body = re.sub(r"\s{2,}", " ", body)
+    body = re.sub(r"\s+([,.?])", r"\1", body).replace(",,", ",").replace(", .", ".").strip(" ,")
+    first_word = body.split(" ", 1)[0].lower() if body else ""
+    if first_word in CASUAL_OPENERS:
+        body = body[0].lower() + body[1:]
+    sentences = split_sentences(body)[:MAX_SENTENCES]
+    greeting = f"Hey {first_name}," if first_name else "Hey there,"
     return f"{greeting} {' '.join(sentences)}".strip()
 
 
@@ -86,6 +112,12 @@ PAIN_RE = re.compile(
     r"track(?:s)?|reduce(?:s)?|eliminate(?:s)?|fix(?:es)?|stop(?:s)?)\s+(.+?)(?:\s+(?:in|across|for)\s+.+?)?\.?$",
     re.I,
 )
+HEADLINE_VERBS = {
+    "launches": "just launched", "launched": "just launched", "raises": "just raised", "raised": "just raised",
+    "ships": "just shipped", "introduces": "just introduced", "unveils": "just unveiled",
+    "announces": "just announced", "adds": "just added", "releases": "just released", "debuts": "just debuted",
+    "acquires": "just acquired", "opens": "just opened", "expands": "are expanding", "rolls out": "are rolling out",
+}
 
 
 def derive_pain(seller_context: str) -> Optional[str]:
@@ -98,49 +130,42 @@ def derive_pain(seller_context: str) -> Optional[str]:
     return pain if 2 <= len(pain.split()) <= 14 else None
 
 
-def _seller_clause(seller_context: str) -> str:
-    clause = seller_context.strip().rstrip(".")
-    clause = re.sub(r"^(?:we|our team|i)\s+", "", clause, flags=re.I)
-    words = clause.split()
-    return " ".join(words[:16])
+def _trim(text: str, max_words: int) -> str:
+    words = text.split()
+    return " ".join(words[:max_words]).rstrip(",;:.")
 
 
-def compose_outreach(
-    first_name: Optional[str],
-    company_name: str,
-    hook_sentence: str,
-    seller_context: str,
-    surface: Optional[str] = None,
-) -> str:
-    greeting = f"Hi {first_name} —" if first_name else f"Hi {company_name} team —"
-    subject = surface or "that"
+def _value_sentence(seller_context: str) -> str:
     pain = derive_pain(seller_context)
     if pain:
-        ai_seller = re.search(r"\b(evals?|evaluation|LLMs?|AI|models?|hallucinat\w*)\b", seller_context, re.I)
-        tail = "before any offline eval flags them" if ai_seller else "before anyone downstream notices"
-        pain_sentence = f"Once {subject} runs on live customer data, {pain} tend to surface in production {tail}."
-    else:
-        pain_sentence = (
-            f"We work on the layer underneath {subject} ({_seller_clause(seller_context)}), "
-            "which is usually where the first scaling issue shows up."
-        )
-    cta = "How are you catching those today — open to a 15-minute look at how we'd trace it on your stack?"
-    text = f"{greeting} {hook_sentence.strip()} {pain_sentence} {cta}"
-    # Keep it inside the word budget by shortening the CTA, then the hook.
-    if word_count(text) > 65:
-        cta = "Open to a quick look at how we'd trace that on your stack?"
-        text = f"{greeting} {hook_sentence.strip()} {pain_sentence} {cta}"
-    if word_count(text) > 65:
-        words = hook_sentence.split()
-        trimmed = " ".join(words[: max(8, len(words) - (word_count(text) - 65))]).rstrip(",;:") + "."
-        text = f"{greeting} {trimmed} {pain_sentence} {cta}"
-    return sanitize(text, first_name) if first_name else text
+        return f"We help teams catch {pain} before they reach users."
+    clause = re.sub(r"\s+", " ", seller_context.strip().rstrip("."))
+    match = re.match(r"^(?:we|i|our team)\s+(.*)$", clause, re.I)
+    if match:
+        return f"We {_trim(match.group(1), 14)}."
+    return f"We build {clause[:1].lower()}{_trim(clause[1:], 13)}."
 
 
-def hook_from_headline(company_name: str, headline: str) -> str:
-    """Turn a news/changelog headline into a neutral first sentence."""
+def casual_from_headline(company_name: str, headline: str) -> str:
+    """'Acme AI launches Agents API for replaying traces - TechCrunch' -> 'saw you just launched Agents API for replaying traces'."""
     headline = re.sub(r"\s+[|\-–—]\s+[^|\-–—]{2,40}$", "", headline).strip().rstrip(".")
-    words = headline.split()
-    if len(words) > 14:
-        headline = " ".join(words[:14]) + "…"
-    return f"Saw the recent {company_name} news: “{headline}”."
+    rest = re.sub(rf"^{re.escape(company_name)}('s)?\s+", "", headline, flags=re.I)
+    for verb, phrase in HEADLINE_VERBS.items():
+        if rest.lower().startswith(verb + " "):
+            return f"saw you {phrase} {_trim(rest[len(verb) + 1:], 6)}"
+    return f"saw the recent {company_name} news"
+
+
+def compose_outreach(first_name: Optional[str], company_name: str, casual: str, seller_context: str) -> str:
+    greeting = f"Hey {first_name}," if first_name else f"Hey {company_name} team,"
+    opener = f"{greeting} {casual.strip().rstrip('.')}."
+    value = _value_sentence(seller_context)
+    question = "Are you handling that in-house, or open to a quick look?"
+    text = f"{opener} {value} {question}"
+    if word_count(text) > TARGET_MAX_WORDS:
+        question = "Open to a quick look?"
+        text = f"{opener} {value} {question}"
+    if word_count(text) > TARGET_MAX_WORDS:
+        opener = f"{greeting} {_trim(casual, max(4, len(casual.split()) - (word_count(text) - TARGET_MAX_WORDS)))}."
+        text = f"{opener} {value} {question}"
+    return sanitize(text, first_name) if first_name else DASH_RE.sub(", ", text)

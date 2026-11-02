@@ -6,10 +6,12 @@
     "gtm_motion": "Usage-Based",
     "pricing_tier_summary": "2.9% + 30¢ per card tx · custom volume rates",
     "tech_and_live_signals": [
-      "Trigger: Sessions 2026 (Apr) shipped 288 launches, incl. Machine Payments Protocol with Tempo and Link agent mode.",
-      "Stack/GitHub: official stripe-node, stripe-python and stripe-go SDKs plus an agent toolkit for LLM tool-calling.",
-      "Compliance: PCI DSS Level 1; SOC 1 and SOC 2 Type II."
+      "Launch: Link agent mode and the Machine Payments Protocol with Tempo (Sessions, Apr 2026).",
+      "Stack: official stripe-node, stripe-python and stripe-go SDKs plus an agent toolkit for LLM tool-calling.",
+      "Trust: PCI DSS Level 1; SOC 1 and SOC 2 Type II."
     ],
+    "fit_tier": "Strong Fit",
+    "fit_reason": "Agentic checkout puts LLM decisions on the payment path, where a hallucinated cart item becomes a real charge.",
     "decision_maker": {
       "full_name": "Emily Glassberg Sands",
       "role": "Head of Data & AI",
@@ -17,7 +19,7 @@
       "work_email": "emily@stripe.com",
       "email_status": "Pattern Inferred"
     },
-    "ai_outreach": "Hi Emily — Sessions 2026 put agents directly on the payment path, from Link's agent mode to the Machine Payments Protocol with Tempo. Once an LLM assembles the cart, a hallucinated line item or a retrieval miss on merchant policy turns into a disputed charge instead of a bad answer. How are you evaluating agent-initiated payments before they reach Radar — worth comparing notes?",
+    "ai_outreach": "Hey Emily, saw you're rolling out agent checkout on Link. We help teams catch hallucinated cart items and policy misses before an agent actually triggers a charge. Are you building evals for that in-house, or open to a quick look?",
     "sources_used": [
       "Website",
       "Pricing",
@@ -62,10 +64,12 @@
     "gtm_motion": "Freemium PLG",
     "pricing_tier_summary": "Free · Plus $10/seat · Business $20/seat · agents $10/1K credits",
     "tech_and_live_signals": [
-      "Trigger: Custom Agents moved to metered credits (May 2026) alongside a new Developer Platform for Workers and external agents.",
-      "Stack/GitHub: makenotion/notion-sdk-js (TypeScript) and notion-mcp-server on the public REST API.",
-      "Compliance: SOC 2 Type II, ISO 27001, GDPR; HIPAA BAA on Enterprise."
+      "Launch: Custom Agents on metered credits (May 2026), plus a Developer Platform for Workers and external agents.",
+      "Stack: makenotion/notion-sdk-js (TypeScript) and notion-mcp-server on the public REST API.",
+      "Trust: SOC 2 Type II, ISO 27001, GDPR; HIPAA BAA on Enterprise."
     ],
+    "fit_tier": "Strong Fit",
+    "fit_reason": "Custom Agents retrieve across permissioned workspace pages, so retrieval regressions reach users directly.",
     "decision_maker": {
       "full_name": "Max Schoening",
       "role": "CTO",
@@ -73,7 +77,7 @@
       "work_email": "max@notion.so",
       "email_status": "Pattern Inferred"
     },
-    "ai_outreach": "Hi Max — Custom Agents now run on metered credits and can act across workspace pages and external tools through the Developer Platform. Agents reading permission-scoped content regress quietly: a retrieval change surfaces a page the requester can't see, or an answer cites a stale doc. Are you replaying production agent runs after each model or index change, or mostly spot-checking?",
+    "ai_outreach": "Hey Max, been testing Notion's custom agents across workspace docs and Slack. How are you guys making sure a model or index update doesn't quietly pull from a stale page? Built a lightweight tool to replay agent runs if you're open to a peek.",
     "sources_used": [
       "Website",
       "Pricing",
@@ -118,10 +122,12 @@
     "gtm_motion": "Usage-Based PLG",
     "pricing_tier_summary": "Hobby free · Pro $20/seat/mo + $20 usage credit · on-demand",
     "tech_and_live_signals": [
-      "Trigger: AI Gateway added per-user budgets for AI SDK 6 apps; Vercel Sandbox went GA (Jan 2026) on Fluid compute.",
-      "Stack/GitHub: vercel/next.js, vercel/ai (AI SDK) and turborepo; TypeScript-first with Rust tooling.",
-      "Compliance: SOC 2 Type 2, ISO 27001:2022, PCI DSS; HIPAA BAA on Pro and Enterprise."
+      "Launch: AI Gateway per-user budgets and multi-provider fallbacks; Vercel Sandbox GA on Fluid compute.",
+      "Stack: vercel/next.js, vercel/ai (AI SDK) and turborepo; TypeScript-first with Rust tooling.",
+      "Trust: SOC 2 Type 2, ISO 27001:2022, PCI DSS; HIPAA BAA on Pro and Enterprise."
     ],
+    "fit_tier": "Strong Fit",
+    "fit_reason": "AI Gateway routes production LLM traffic across providers, so fallback latency and quality shifts are core risks.",
     "decision_maker": {
       "full_name": "Malte Ubl",
       "role": "CTO",
@@ -129,7 +135,7 @@
       "work_email": "malte@vercel.com",
       "email_status": "Pattern Inferred"
     },
-    "ai_outreach": "Hi Malte — AI Gateway now sits in front of AI SDK 6 apps with per-user budgets and multi-provider fallbacks on Fluid compute. When a request fails over to another model, p95 latency and answer quality both shift, and teams usually find out through support tickets. Would a quick look at scoring each fallback path per model be useful for the Gateway roadmap?",
+    "ai_outreach": "Hey Malte, saw AI Gateway is handling multi-provider fallbacks on Fluid compute now. When a request falls back to a backup model, how are teams tracking shifts in answer quality vs latency? Open to seeing how we score fallback paths?",
     "sources_used": [
       "Website",
       "Pricing",
@@ -174,10 +180,12 @@
     "gtm_motion": "Freemium PLG",
     "pricing_tier_summary": "Free · Basic $10/user/mo · Business $16/user/mo (annual)",
     "tech_and_live_signals": [
-      "Trigger: Linear Agent went GA (Jun 2026) alongside Triage rules, Diffs and guided code reviews.",
-      "Stack/GitHub: linear/linear monorepo with the TypeScript SDK for the GraphQL API, plus an MCP server.",
-      "Compliance: SOC 2 Type II; HIPAA listed on linear.app/security."
+      "Launch: Linear Agent went GA (Jun 2026) alongside Triage rules, Diffs and guided code reviews.",
+      "Stack: linear/linear monorepo with the TypeScript SDK for the GraphQL API, plus an MCP server.",
+      "Trust: SOC 2 Type II; HIPAA listed on linear.app/security."
     ],
+    "fit_tier": "Moderate Fit",
+    "fit_reason": "Triage and review agents are real LLM workflows, but still a feature layer on a non-AI core product.",
     "decision_maker": {
       "full_name": "Tuomas Artman",
       "role": "Co-Founder & CTO",
@@ -185,7 +193,7 @@
       "work_email": "tuomas@linear.app",
       "email_status": "Pattern Inferred"
     },
-    "ai_outreach": "Hi Tuomas — Linear Agent going GA next to Diffs and guided reviews means model output now lands directly in triage and code review. If a prompt or model update starts mislabeling priority or misreading a diff, the result still looks plausible, so nobody files a bug. How do you regression-test agent behavior today — open to a quick look at replaying real triage traces?",
+    "ai_outreach": "Hey Tuomas, been playing with the new Linear Agent for auto-triage. How are you testing that prompt or model updates don't quietly mislabel bug priorities? We built a simple way to replay real triage traces if you're ever curious.",
     "sources_used": [
       "Website",
       "Pricing",
@@ -230,10 +238,12 @@
     "gtm_motion": "Freemium + Sales-Led",
     "pricing_tier_summary": "Free · Plus $15/user/mo + platform fee · Enterprise custom",
     "tech_and_live_signals": [
-      "Trigger: reported $60B round (Oct 2026) after a $44B Series F; accounting agents and an AI-agent card with Visa.",
-      "Stack/GitHub: ramp-public/ramp-mcp (Python MCP server over the Developer API); in-house Inspect coding agent.",
-      "Compliance: SOC 1 and SOC 2 Type II, ISO 27001, PCI DSS (trust.ramp.com)."
+      "Launch: accounting agents that run close and reconciliation, plus an AI-agent card with Visa.",
+      "Traction: reported $60B valuation round (Oct 2026), four months after a $44B Series F.",
+      "Trust: SOC 1 and SOC 2 Type II, ISO 27001, PCI DSS (trust.ramp.com)."
     ],
+    "fit_tier": "Strong Fit",
+    "fit_reason": "Accounting agents extract invoices and post to ledgers, where one hallucinated line item becomes a financial error.",
     "decision_maker": {
       "full_name": "Rahul Sengottuvelu",
       "role": "CTO (prev. Head of Applied AI)",
@@ -241,7 +251,7 @@
       "work_email": "rahul@ramp.com",
       "email_status": "Pattern Inferred"
     },
-    "ai_outreach": "Hi Rahul — Ramp's accounting agents now run close and reconciliation on their own, and the agent card lets them pay vendors directly. When invoice extraction drifts after a model or prompt change, a hallucinated line item posts to the ledger instead of failing loudly. How are you testing structured outputs against real invoices per release — open to a quick look at how we replay them?",
+    "ai_outreach": "Hey Rahul, saw Ramp's accounting agents are handling invoice close and vendor payouts directly now. How is your team testing that prompt changes don't let a bad line item slip into the ledger? Open to a quick look at how we run invoice evals?",
     "sources_used": [
       "Website",
       "Pricing",

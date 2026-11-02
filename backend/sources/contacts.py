@@ -18,15 +18,18 @@ log = logging.getLogger("miniclay.contacts")
 LINKEDIN_PROFILE_RE = re.compile(r"^https?://([a-z]{2,3}\.)?(www\.)?linkedin\.com/in/([^/?#]+)/?", re.I)
 
 # (pattern, canonical label, score). Highest score wins when several match.
+# Technical leaders first; founders and CEOs right behind them, so a 5-person startup with no
+# VP of Engineering still resolves cleanly to its Founder/CEO or Co-Founder/CTO.
 ROLE_RULES: List[Tuple[str, str, int]] = [
     (r"\bCTO\b|Chief Technology Officer", "CTO", 100),
     (r"Chief AI Officer|\bCAIO\b", "Chief AI Officer", 96),
     (r"Head of (?:Applied )?AI\b|Head of (?:Data (?:&|and) )?AI\b|Head of Machine Learning|Head of ML\b", "Head of AI", 92),
     (r"\bVP,? (?:of )?Engineering\b|Vice President,? (?:of )?Engineering|SVP,? (?:of )?Engineering", "VP of Engineering", 88),
-    (r"Head of Engineering|Engineering Director|Director of Engineering", "Head of Engineering", 78),
-    (r"\bCo-?founder\b", "Co-Founder", 72),
+    (r"Head of Engineering|Engineering Director|Director of Engineering", "Head of Engineering", 82),
+    (r"\bCo-?founder\b", "Co-Founder", 80),
+    (r"\bFounder\b", "Founder", 78),
+    (r"\bCEO\b|Chief Executive Officer", "CEO", 76),
     (r"Chief Product Officer|\bCPO\b", "Chief Product Officer", 66),
-    (r"\bFounder\b", "Founder", 60),
 ]
 NON_TECH_ROLE_RE = re.compile(r"\b(sales|marketing|recruit\w*|talent|partnerships?|account|people|finance|legal|GTM)\b", re.I)
 FORMER_RE = re.compile(r"\b(former|formerly|ex-|previously|past|alum(?:nus|ni)?)\b", re.I)
@@ -51,7 +54,7 @@ class Candidate:
 def linkedin_query(company_name: str) -> str:
     return (
         f'site:linkedin.com/in/ "{company_name}" '
-        '("CTO" OR "VP of Engineering" OR "Head of AI" OR "Co-Founder" OR "VP Engineering")'
+        '("Founder" OR "Co-Founder" OR "CEO" OR "CTO" OR "Head of AI" OR "VP Engineering" OR "VP of Engineering")'
     )
 
 
@@ -78,6 +81,8 @@ def _score_role(text: str) -> Tuple[int, List[str]]:
         best -= 8  # "CTO (Security)" is a narrower seat than "CTO"
     if "CTO" in labels and "Co-Founder" in labels:
         best += 4
+    elif "CEO" in labels and ("Co-Founder" in labels or "Founder" in labels):
+        best += 2
     return best, labels
 
 
@@ -87,8 +92,10 @@ def _clean_role(raw: str, company_name: str, labels: List[str]) -> str:
     role = re.sub(r"\s{2,}", " ", role).strip(" ,|-–—·")
     if role and len(role) <= 60 and any(re.search(p, role, re.I) for p, _, _ in ROLE_RULES):
         return role.replace("Cofounder", "Co-Founder").replace("Co-founder", "Co-Founder")
-    if "Co-Founder" in labels and "CTO" in labels:
-        return "Co-Founder & CTO"
+    founder = "Co-Founder" if "Co-Founder" in labels else ("Founder" if "Founder" in labels else "")
+    for seat in ("CTO", "CEO"):
+        if founder and seat in labels:
+            return f"{founder} & {seat}"
     return labels[0] if labels else ""
 
 

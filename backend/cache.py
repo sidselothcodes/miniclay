@@ -19,9 +19,13 @@ from settings import CACHE_TTL_HOURS, DB_PATH
 log = logging.getLogger("miniclay.cache")
 
 
+# Bump when the row schema or outreach style changes so stale cached rows aren't served.
+CACHE_VERSION = "v2"
+
+
 def cache_key(domain: str, seller_context: str) -> str:
     normalized = re.sub(r"\s+", " ", seller_context.strip().lower())
-    return hashlib.sha256(f"{domain.lower()}|{normalized}".encode()).hexdigest()[:32]
+    return hashlib.sha256(f"{CACHE_VERSION}|{domain.lower()}|{normalized}".encode()).hexdigest()[:32]
 
 
 class EnrichmentCache:

@@ -23,6 +23,16 @@ function getGtmStyle(motion: string | null) {
   return GTM_COLORS.find(([re]) => re.test(motion))?.[1] || GRAY;
 }
 
+const FIT_COLORS: Record<string, { bg: string; text: string }> = {
+  'strong fit': { bg: '#ECFDF5', text: '#059669' },
+  'moderate fit': { bg: '#FFFBEB', text: '#D97706' },
+  'low fit': GRAY,
+};
+
+function getFitStyle(tier: string | null | undefined) {
+  return (tier && FIT_COLORS[tier.toLowerCase()]) || GRAY;
+}
+
 function splitPrefix(signal: string): [string, string] {
   const match = signal.match(/^\s*([^:]{2,24}):\s*(.*)$/s);
   return match ? [match[1], match[2]] : ['', signal];
@@ -38,7 +48,7 @@ const DecisionMakerCell: React.FC<{ dm: DecisionMaker | null; alternates?: strin
     return (
       <>
         <div className="dm-name dm-missing">Not found</div>
-        <div className="dm-role">{dm?.role || 'No public CTO / VP Eng profile found'}</div>
+        <div className="dm-role">{dm?.role || 'No public founder, CTO or VP Eng profile found'}</div>
         {dm?.linkedin_url && (
           <a className="linkedin-badge" href={dm.linkedin_url} target="_blank" rel="noopener noreferrer">
             Search LinkedIn ↗
@@ -84,13 +94,13 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
       <table className="enrichment-table">
         <thead>
           <tr>
-            <th className="table-header" style={{ width: 170 }}>COMPANY</th>
-            <th className="table-header" style={{ width: 200 }}>PRODUCT &amp; ICP</th>
-            <th className="table-header" style={{ width: 150 }}>GTM &amp; PRICING</th>
-            <th className="table-header" style={{ width: 270 }}>TECH &amp; LIVE SIGNALS</th>
-            <th className="table-header" style={{ width: 200 }}>DECISION MAKER</th>
-            <th className="table-header">AI OUTREACH</th>
-            <th className="table-header" style={{ width: 110 }}>SOURCES</th>
+            <th className="table-header" style={{ width: 160 }}>COMPANY</th>
+            <th className="table-header" style={{ width: 185 }}>PRODUCT &amp; ICP</th>
+            <th className="table-header" style={{ width: 140 }}>GTM &amp; PRICING</th>
+            <th className="table-header" style={{ width: 245 }}>KEY SIGNALS</th>
+            <th className="table-header" style={{ width: 175 }}>WHY THEY FIT</th>
+            <th className="table-header" style={{ width: 195 }}>POINT OF CONTACT</th>
+            <th className="table-header">OUTREACH DRAFT</th>
           </tr>
         </thead>
         <tbody>
@@ -123,6 +133,7 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
             }
 
             const gtmStyle = getGtmStyle(result.gtm_motion);
+            const fitStyle = getFitStyle(result.fit_tier);
 
             return (
               <tr key={result.domain} className="table-row fade-in">
@@ -151,29 +162,31 @@ const EnrichmentTable: React.FC<EnrichmentTableProps> = ({ results }) => {
                 </td>
 
                 <td className="table-cell">
+                  {result.fit_tier && (
+                    <span className="pill" style={{ backgroundColor: fitStyle.bg, color: fitStyle.text }}>
+                      {result.fit_tier}
+                    </span>
+                  )}
+                  <div className="fit-reason">{result.fit_reason}</div>
+                </td>
+
+                <td className="table-cell">
                   <DecisionMakerCell dm={result.decision_maker} alternates={result.email_alternates} />
                 </td>
 
                 <td className="table-cell cell-outreach">
-                  {result.ai_outreach && <CopyButton text={result.ai_outreach} title="Copy email" />}
-                  {result.ai_outreach}
-                </td>
-
-                <td className="table-cell">
-                  <div className="source-badges">
-                    {result.sources_used.map((src) => {
-                      const url = result.source_urls?.[src]?.[0];
-                      return url ? (
-                        <a key={src} className="source-badge" href={url} target="_blank" rel="noopener noreferrer" title={url}>
-                          {src} {'✓'}
-                        </a>
-                      ) : (
-                        <span key={src} className="source-badge">
-                          {src} {'✓'}
-                        </span>
-                      );
-                    })}
-                  </div>
+                  {result.ai_outreach ? (
+                    <>
+                      <CopyButton text={result.ai_outreach} title="Copy email" />
+                      {result.ai_outreach}
+                    </>
+                  ) : (
+                    <span className="outreach-skipped">
+                      {result.fit_tier === 'Low Fit'
+                        ? 'Skipped: low fit for your product, so no draft written.'
+                        : 'No draft available.'}
+                    </span>
+                  )}
                 </td>
               </tr>
             );

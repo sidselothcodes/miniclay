@@ -4,6 +4,9 @@ The live pipeline uses this only to fill gaps when a source is blocked or
 rate-limited (common on cloud IPs), so the demo never renders empty cells.
 Fields filled from here are listed in the row's `fallbacks`, and they never
 add a badge to `sources_used`. Verified via web research on VERIFIED_AT.
+
+`fit` and `outreach_default` are written for the default seller context
+(settings.DEFAULT_SELLER_CONTEXT); any other context is assessed live.
 """
 from __future__ import annotations
 
@@ -21,22 +24,25 @@ KNOWLEDGE: Dict[str, dict] = {
         "gtm_motion": "Usage-Based",
         "pricing_tier_summary": "2.9% + 30¢ per card tx · custom volume rates",
         "signals": [
-            "Trigger: Sessions 2026 (Apr) shipped 288 launches, incl. Machine Payments Protocol with Tempo "
-            "and Link agent mode.",
-            "Stack/GitHub: official stripe-node, stripe-python and stripe-go SDKs plus an agent toolkit for "
-            "LLM tool-calling.",
-            "Compliance: PCI DSS Level 1; SOC 1 and SOC 2 Type II.",
+            "Launch: Link agent mode and the Machine Payments Protocol with Tempo (Sessions, Apr 2026).",
+            "Stack: official stripe-node, stripe-python and stripe-go SDKs plus an agent toolkit for LLM tool-calling.",
+            "Trust: PCI DSS Level 1; SOC 1 and SOC 2 Type II.",
         ],
+        "fit": {
+            "tier": "Strong Fit",
+            "reason": "Agentic checkout puts LLM decisions on the payment path, where a hallucinated cart item becomes a real charge.",
+        },
         "decision_maker": {
             "full_name": "Emily Glassberg Sands",
             "role": "Head of Data & AI",
             "linkedin_url": "https://www.linkedin.com/in/egsands",
         },
-        "hook": (
-            "Saw Sessions 2026 put agents directly on the payment path, from Link's agent mode to the "
-            "Machine Payments Protocol with Tempo."
+        "casual": "saw you're rolling out agent checkout on Link",
+        "outreach_default": (
+            "Hey Emily, saw you're rolling out agent checkout on Link. We help teams catch hallucinated cart "
+            "items and policy misses before an agent actually triggers a charge. Are you building evals for "
+            "that in-house, or open to a quick look?"
         ),
-        "surface": "agent-initiated checkout",
         "source_urls": {
             "Website": ["https://stripe.com/blog/everything-we-announced-at-sessions-2026"],
             "Pricing": ["https://stripe.com/pricing"],
@@ -58,21 +64,25 @@ KNOWLEDGE: Dict[str, dict] = {
         "gtm_motion": "Freemium PLG",
         "pricing_tier_summary": "Free · Plus $10/seat · Business $20/seat · agents $10/1K credits",
         "signals": [
-            "Trigger: Custom Agents moved to metered credits (May 2026) alongside a new Developer Platform "
-            "for Workers and external agents.",
-            "Stack/GitHub: makenotion/notion-sdk-js (TypeScript) and notion-mcp-server on the public REST API.",
-            "Compliance: SOC 2 Type II, ISO 27001, GDPR; HIPAA BAA on Enterprise.",
+            "Launch: Custom Agents on metered credits (May 2026), plus a Developer Platform for Workers and external agents.",
+            "Stack: makenotion/notion-sdk-js (TypeScript) and notion-mcp-server on the public REST API.",
+            "Trust: SOC 2 Type II, ISO 27001, GDPR; HIPAA BAA on Enterprise.",
         ],
+        "fit": {
+            "tier": "Strong Fit",
+            "reason": "Custom Agents retrieve across permissioned workspace pages, so retrieval regressions reach users directly.",
+        },
         "decision_maker": {
             "full_name": "Max Schoening",
             "role": "CTO",
             "linkedin_url": "https://www.linkedin.com/in/max-schoening",
         },
-        "hook": (
-            "Saw Custom Agents moved to metered credits and can now act across workspace pages and "
-            "external tools through the Developer Platform."
+        "casual": "been testing Notion's custom agents across workspace docs and Slack",
+        "outreach_default": (
+            "Hey Max, been testing Notion's custom agents across workspace docs and Slack. How are you guys "
+            "making sure a model or index update doesn't quietly pull from a stale page? Built a lightweight "
+            "tool to replay agent runs if you're open to a peek."
         ),
-        "surface": "permission-scoped agent retrieval",
         "source_urls": {
             "Website": ["https://www.notion.com/blog/meet-max-schoening-notion-cto"],
             "Pricing": ["https://www.notion.com/help/custom-agent-pricing", "https://www.notion.com/pricing"],
@@ -90,21 +100,25 @@ KNOWLEDGE: Dict[str, dict] = {
         "gtm_motion": "Usage-Based PLG",
         "pricing_tier_summary": "Hobby free · Pro $20/seat/mo + $20 usage credit · on-demand",
         "signals": [
-            "Trigger: AI Gateway added per-user budgets for AI SDK 6 apps; Vercel Sandbox went GA "
-            "(Jan 2026) on Fluid compute.",
-            "Stack/GitHub: vercel/next.js, vercel/ai (AI SDK) and turborepo; TypeScript-first with Rust tooling.",
-            "Compliance: SOC 2 Type 2, ISO 27001:2022, PCI DSS; HIPAA BAA on Pro and Enterprise.",
+            "Launch: AI Gateway per-user budgets and multi-provider fallbacks; Vercel Sandbox GA on Fluid compute.",
+            "Stack: vercel/next.js, vercel/ai (AI SDK) and turborepo; TypeScript-first with Rust tooling.",
+            "Trust: SOC 2 Type 2, ISO 27001:2022, PCI DSS; HIPAA BAA on Pro and Enterprise.",
         ],
+        "fit": {
+            "tier": "Strong Fit",
+            "reason": "AI Gateway routes production LLM traffic across providers, so fallback latency and quality shifts are core risks.",
+        },
         "decision_maker": {
             "full_name": "Malte Ubl",
             "role": "CTO",
             "linkedin_url": "https://www.linkedin.com/in/malteubl",
         },
-        "hook": (
-            "Saw AI Gateway added per-user budgets in front of AI SDK 6 apps, with multi-provider fallbacks "
-            "running on Fluid compute."
+        "casual": "saw AI Gateway is handling multi-provider fallbacks on Fluid compute now",
+        "outreach_default": (
+            "Hey Malte, saw AI Gateway is handling multi-provider fallbacks on Fluid compute now. When a request "
+            "falls back to a backup model, how are teams tracking shifts in answer quality vs latency? Open to "
+            "seeing how we score fallback paths?"
         ),
-        "surface": "a multi-model fallback chain",
         "source_urls": {
             "Website": ["https://vercel.com/docs/security/compliance"],
             "Pricing": ["https://vercel.com/docs/plans/pro", "https://vercel.com/pricing"],
@@ -122,20 +136,25 @@ KNOWLEDGE: Dict[str, dict] = {
         "gtm_motion": "Freemium PLG",
         "pricing_tier_summary": "Free · Basic $10/user/mo · Business $16/user/mo (annual)",
         "signals": [
-            "Trigger: Linear Agent went GA (Jun 2026) alongside Triage rules, Diffs and guided code reviews.",
-            "Stack/GitHub: linear/linear monorepo with the TypeScript SDK for the GraphQL API, plus an MCP server.",
-            "Compliance: SOC 2 Type II; HIPAA listed on linear.app/security.",
+            "Launch: Linear Agent went GA (Jun 2026) alongside Triage rules, Diffs and guided code reviews.",
+            "Stack: linear/linear monorepo with the TypeScript SDK for the GraphQL API, plus an MCP server.",
+            "Trust: SOC 2 Type II; HIPAA listed on linear.app/security.",
         ],
+        "fit": {
+            "tier": "Moderate Fit",
+            "reason": "Triage and review agents are real LLM workflows, but still a feature layer on a non-AI core product.",
+        },
         "decision_maker": {
             "full_name": "Tuomas Artman",
             "role": "Co-Founder & CTO",
             "linkedin_url": "https://www.linkedin.com/in/tuomasartman",
         },
-        "hook": (
-            "Saw Linear Agent go GA alongside Diffs and guided reviews, so model output now lands directly "
-            "in triage and code review."
+        "casual": "been playing with the new Linear Agent for auto-triage",
+        "outreach_default": (
+            "Hey Tuomas, been playing with the new Linear Agent for auto-triage. How are you testing that prompt "
+            "or model updates don't quietly mislabel bug priorities? We built a simple way to replay real triage "
+            "traces if you're ever curious."
         ),
-        "surface": "automated triage",
         "source_urls": {
             "Website": ["https://linear.app/security"],
             "Pricing": ["https://linear.app/pricing"],
@@ -153,23 +172,26 @@ KNOWLEDGE: Dict[str, dict] = {
         "gtm_motion": "Freemium + Sales-Led",
         "pricing_tier_summary": "Free · Plus $15/user/mo + platform fee · Enterprise custom",
         "signals": [
-            "Trigger: reported $60B round (Oct 2026) after a $44B Series F; accounting agents and an "
-            "AI-agent card with Visa.",
-            "Stack/GitHub: ramp-public/ramp-mcp (Python MCP server over the Developer API); in-house Inspect "
-            "coding agent.",
-            "Compliance: SOC 1 and SOC 2 Type II, ISO 27001, PCI DSS (trust.ramp.com).",
+            "Launch: accounting agents that run close and reconciliation, plus an AI-agent card with Visa.",
+            "Traction: reported $60B valuation round (Oct 2026), four months after a $44B Series F.",
+            "Trust: SOC 1 and SOC 2 Type II, ISO 27001, PCI DSS (trust.ramp.com).",
         ],
+        "fit": {
+            "tier": "Strong Fit",
+            "reason": "Accounting agents extract invoices and post to ledgers, where one hallucinated line item becomes a financial error.",
+        },
         "decision_maker": {
             "full_name": "Rahul Sengottuvelu",
             "role": "CTO (prev. Head of Applied AI)",
             # No public profile URL could be verified, so we link a LinkedIn people search instead.
             "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Rahul+Sengottuvelu+Ramp",
         },
-        "hook": (
-            "Saw Ramp's accounting agents now run close and reconciliation on their own, with an agent "
-            "card paying vendors directly."
+        "casual": "saw Ramp's accounting agents are handling invoice close and vendor payouts directly now",
+        "outreach_default": (
+            "Hey Rahul, saw Ramp's accounting agents are handling invoice close and vendor payouts directly now. "
+            "How is your team testing that prompt changes don't let a bad line item slip into the ledger? Open to "
+            "a quick look at how we run invoice evals?"
         ),
-        "surface": "invoice extraction",
         "source_urls": {
             "Website": ["https://ramp.com/security"],
             "Pricing": ["https://ramp.com/pricing"],

@@ -30,10 +30,14 @@ class EnrichedCompany(BaseModel):
         description='Concrete pricing, e.g. "$20/user/mo + usage", "2.9% + 30¢ per tx".'
     )
     tech_and_live_signals: List[str] = Field(
-        description='Exactly 3 items prefixed "Trigger: ", "Stack/GitHub: ", "Compliance: ".'
+        description='Exactly 3 items with adaptive prefixes: "Launch:"/"Product:", "Stack:"/"Traction:", "Trust:"/"Scale:".'
     )
+    fit_tier: str = Field(description='"Strong Fit", "Moderate Fit" or "Low Fit" for the seller\'s product.')
+    fit_reason: str = Field(description="One sentence, max 20 words: why this company does or doesn't fit the seller.")
     decision_maker: DecisionMaker
-    ai_outreach: str = Field(description="3-sentence cold email, 55-65 words, to the decision maker.")
+    ai_outreach: str = Field(
+        description='2-3 short sentences, 30-40 words, starting "Hey <FirstName>,". Empty string for "Low Fit".'
+    )
     sources_used: List[str] = Field(
         description='Subset of ["Website", "Pricing", "GitHub", "News", "LinkedIn"]. Never "AI".'
     )

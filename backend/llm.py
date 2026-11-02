@@ -19,33 +19,42 @@ log = logging.getLogger("miniclay.llm")
 
 MAX_CONTEXT_CHARS = 14000
 
-SYSTEM_PROMPT = f"""You are a senior B2B GTM research analyst. You turn raw evidence scraped about ONE company into a strict JSON record for outbound sales.
+SYSTEM_PROMPT = f"""You are a senior B2B GTM research analyst. You turn raw evidence scraped about ONE company into a strict JSON record for outbound sales. The company may be a large enterprise, a 5-person startup, or a consumer brand; adapt to what the evidence shows.
 
 Ground rules:
-- Use only facts present in the evidence blocks ([Website], [Pricing], [GitHub], [News], [LinkedIn], [Reference]). Never invent people, URLs, numbers, launches or certifications.
+- Use only facts present in the evidence blocks ([Website], [Pricing], [GitHub], [News], [LinkedIn], [Reference]). Never invent people, URLs, numbers, launches, funding or certifications.
 - Prefer the most recent dated evidence. When evidence for a field is missing, say so plainly instead of guessing.
 
 Fields:
 - company_name: the short brand name.
 - product_and_icp: ONE sentence, max 22 words, no buzzwords: what they build and who buys it (team, role or company type).
-- gtm_motion: 1-3 words, e.g. "Usage-Based", "Freemium PLG", "Sales-Led Enterprise", "Self-Serve SaaS", "Usage-Based PLG".
-- pricing_tier_summary: concrete figures copied from [Pricing], max 70 characters, e.g. "$20/user/mo + usage", "2.9% + 30¢ per tx", "Free · $10–$16/user/mo". If no figures exist: "Custom / contact sales".
-- tech_and_live_signals: exactly 3 strings, in this order, each max 18 words (scannable, no filler):
-  1. "Trigger: ..." the most recent concrete launch, AI feature, funding round or exec change (with month/year when known).
-  2. "Stack/GitHub: ..." public repos, SDKs, APIs and languages from [GitHub] (name real repos).
-  3. "Compliance: ..." certifications found (SOC 2, ISO 27001, HIPAA, PCI DSS, GDPR, ...). If none: "Compliance: not published on site".
-- decision_maker: pick exactly ONE person from the [LinkedIn] candidates (copy full_name, role, linkedin_url, work_email and email_status exactly as given). Prefer CTO > Head of AI > VP of Engineering > technical co-founder.
+- gtm_motion: 1-3 words, e.g. "Usage-Based", "Freemium PLG", "Sales-Led Enterprise", "Self-Serve SaaS", "Consumer D2C".
+- pricing_tier_summary: concrete figures copied from [Pricing], max 70 characters, e.g. "$20/user/mo + usage", "2.9% + 30¢ per tx". If no figures: "Custom / contact sales" or "Pricing not public".
+- tech_and_live_signals: exactly 3 short bullets (max 16 words each) whose bold prefix adapts to the company:
+  1. "Launch: ..." a recent feature, launch or release (with month/year if known), OR "Product: ..." the core workflow or product wedge when nothing recent is public.
+  2. "Stack: ..." public GitHub repos, SDKs, APIs or integrations (dev and B2B tools), OR "Traction: ..." backing (YC batch, seed/Series round), customer vertical, or hiring/growth signals (small startups and consumer apps).
+  3. "Trust: ..." compliance (SOC 2, ISO 27001, HIPAA, PCI DSS) for enterprise sellers, OR "Scale: ..." a usage/volume metric, distribution channel, or operational bottleneck for startups and consumer companies.
+- fit_tier: how well the SELLER's product solves a problem this company has today. One of "Strong Fit", "Moderate Fit", "Low Fit".
+  Strong: evidence shows they run the exact workflow the seller's product addresses. Moderate: adjacent or early signals. Low: no evidence of that workflow (consumer brands, offline businesses, unrelated products).
+  Never invent AI, LLM or other usage to manufacture a fit. A bakery or apparel brand is "Low Fit" for an LLM tool. When unsure, pick the lower tier.
+- fit_reason: ONE sentence, max 20 words, specific to this company and the seller, e.g. "Consumer retail brand with no customer-facing LLM workflows in production."
+- decision_maker: pick exactly ONE person from the [LinkedIn] candidates (copy full_name, role, linkedin_url, work_email and email_status exactly as given). Prefer CTO > Head of AI > VP of Engineering; at startups with no such roles (or under ~20 people) pick the Founder/CEO or Co-Founder/CTO.
 - sources_used: only labels of evidence blocks you actually used, from ["Website", "Pricing", "GitHub", "News", "LinkedIn"]. Never output "AI" or "Reference".
-- ai_outreach: a cold email from the SELLER to the decision maker, following the outreach rules.
+- ai_outreach: a short cold email from the SELLER to the decision maker. If fit_tier is "Low Fit", return an empty string.
 
-Outreach rules (strict):
-1. Start exactly with "Hi <FirstName> —" using the decision maker's first name.
-2. Exactly 3 sentences, 55-65 words total. No sign-off, no signature, no emojis.
-3. Sentence 1 (hook): name ONE specific feature, AI capability or launch from tech_and_live_signals. State it; do not compliment it.
-4. Sentence 2 (pain): connect that exact feature to one concrete engineering failure mode the seller's product addresses (e.g. permission-aware RAG regressions, latency spikes across model fallbacks, hallucinated invoice line items).
-5. Sentence 3 (CTA): one sharp peer-to-peer engineering question, or an offer of a quick look.
-6. Banned words and phrases: {", ".join(f'"{w}"' for w in BANNED_DISPLAY)}, and any exclamation mark.
-7. Plain technical tone, like one engineer writing to another."""
+Outreach rules (strict; it must read like a real person typed it):
+1. Start exactly with "Hey <FirstName>," then continue sentence 1 casually, e.g. "Hey Emily, saw you're rolling out agent checkout on Link."
+2. 2-3 short sentences, 30-40 words total.
+3. Mention their product the way an insider would, in 4-6 casual words. Never recite conference names, dates, version numbers or feature lists back to them, and no parentheses.
+4. Sentence 2: one plain-English line about the specific headache the seller's product solves for that feature.
+5. Sentence 3: a low-pressure question, e.g. "Are you building evals for that in-house, or open to a quick look?"
+6. Never use em-dashes (—), en-dashes or double hyphens (--). Use commas and periods. No exclamation marks, no emojis, no sign-off.
+7. Banned words and phrases: {", ".join(f'"{w}"' for w in BANNED_DISPLAY)}.
+
+Style examples (seller: LLM evaluation and observability):
+"Hey Emily, saw you're rolling out agent checkout on Link. We help teams catch hallucinated cart items and policy misses before an agent actually triggers a charge. Are you building evals for that in-house, or open to a quick look?"
+"Hey Tuomas, been playing with the new Linear Agent for auto-triage. How are you testing that prompt or model updates don't quietly mislabel bug priorities? We built a simple way to replay real triage traces if you're ever curious."
+"""
 
 
 def available() -> bool:
@@ -116,8 +125,9 @@ def build_evidence(bundle: "SourceBundle", seller_context: str) -> str:
 async def _repair_outreach(client, draft: str, issues: List[str], first_name: str, seller_context: str, signals: List[str]) -> Optional[str]:
     prompt = (
         f"Rewrite this cold email so it fixes: {'; '.join(issues)}.\n"
-        f'Rules: start with "Hi {first_name} —"; exactly 3 sentences; 55-65 words; no exclamation marks; '
-        f"none of these words: {', '.join(BANNED_DISPLAY)}. Keep the same facts.\n"
+        f'Rules: start with "Hey {first_name}," then a casual 4-6 word mention of what they ship; 2-3 short '
+        "sentences; 30-40 words; no em-dashes, en-dashes or double hyphens; no dates, no parentheses; no "
+        f"exclamation marks; none of these words: {', '.join(BANNED_DISPLAY)}. Keep it peer-to-peer and plain.\n"
         f"Seller context: {seller_context}\nSignals: {' | '.join(signals)}\n\nDraft:\n{draft}\n\n"
         "Return only the email text."
     )
@@ -169,6 +179,9 @@ async def synthesize(bundle: "SourceBundle", seller_context: str) -> Optional[En
     if result is None:
         return None
 
+    if "low" in (result.fit_tier or "").lower():
+        result.ai_outreach = ""  # no draft for companies that don't fit
+        return result
     first_name = (result.decision_maker.full_name or "").split()[0] if result.decision_maker.full_name else None
     issues = find_violations(result.ai_outreach, first_name)
     if issues:

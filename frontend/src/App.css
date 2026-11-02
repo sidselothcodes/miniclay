@@ -190,7 +190,7 @@ body {
 .enrichment-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1240px;
+  min-width: 1260px;
 }
 
 
@@ -300,7 +300,19 @@ body {
   color: var(--clay-gray-500);
 }
 
-/* Tech & live signals */
+/* Why they fit */
+.fit-reason {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--clay-gray-700);
+}
+
+.outreach-skipped {
+  color: var(--clay-gray-500);
+}
+
+/* Key signals */
 .signal-list {
   list-style: none;
   display: flex;
@@ -471,29 +483,6 @@ body {
   white-space: nowrap;
 }
 
-
-.source-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.source-badge {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  background: var(--clay-gray-100);
-  color: var(--clay-gray-500);
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-a.source-badge:hover {
-  background: var(--clay-orange-bg);
-  color: var(--clay-orange);
-}
 
 .error-message {
   color: var(--clay-error);

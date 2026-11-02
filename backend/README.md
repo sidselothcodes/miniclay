@@ -29,15 +29,17 @@ Those 5 are pre-loaded into the cache at startup, so they return instantly. Add 
 | `POST /api/enrich-single` | `{domain, seller_context?, refresh?}` | Used by the UI so rows fill in progressively |
 | `GET /api/health` | | |
 
-Each row matches `schemas.EnrichmentRow`: the `EnrichedCompany` fields plus `generated_by` (`llm` or `rules`), `source_urls`, `email_alternates`, `fallbacks` (fields filled from curated reference data) and `cached`.
+Each row matches `schemas.EnrichmentRow`: the `EnrichedCompany` fields (including `fit_tier` and `fit_reason`) plus `generated_by` (`llm` or `rules`), `sources_used`/`source_urls` (provenance), `email_alternates`, `fallbacks` (fields filled from curated reference data) and `cached`.
 
 ## How a row is built
 
 - `sources/website.py`: homepage + up to 2 subpages (`/pricing` first), boilerplate stripped, price, compliance and GitHub-link extraction
 - `sources/github.py`: org from a homepage link, then slug guesses verified against the org's `blog` field, then GitHub search. REST API first, HTML fallback when rate-limited (set `GITHUB_TOKEN` for 5,000 req/h)
 - `sources/search.py`: DDGS (`ddgs` / `duckduckgo-search`), then DuckDuckGo HTML, then Bing HTML. A failing provider is skipped for 90s
-- `sources/contacts.py`: parses `Name - Title - Company | LinkedIn` results and ranks CTO > Head of AI > VP Eng > co-founder (former employees and non-technical "Head of AI Sales"-type roles are demoted). Emails are `first@`, `flast@` and `first.last@`, with MX checked through dnspython, then DNS-over-HTTPS
+- `sources/contacts.py`: parses `Name - Title - Company | LinkedIn` results and ranks CTO > Head of AI > VP Eng > Co-Founder > Founder > CEO, so tiny startups resolve to a founder (former employees and non-technical "Head of AI Sales"-type roles are demoted). Emails are `first@`, `flast@` and `first.last@`, with MX checked through dnspython, then DNS-over-HTTPS
 - `llm.py`: OpenAI structured output (`EnrichedCompany`) plus one repair pass if the outreach breaks the rules
+- `outreach.py`: draft guardrails (`Hey <First>,`, 45-word ceiling, no em-dashes/double hyphens, no dates or asides, banned phrases) and the no-LLM composer
+- `fit.py`: evidence-based Strong/Moderate/Low fit; consumer brands with no AI evidence are always Low Fit for AI sellers, whatever the LLM says
 - `enrichment.py`: orchestration, grounding (the LLM can only pick a decision maker the pipeline found; sources are limited to what was fetched), and a rules-based fallback when there is no API key
 - `knowledge.py`: curated reference data for the default domains, used only to fill gaps
 - `cache.py`: SQLite cache keyed by (domain, seller context), 7-day TTL

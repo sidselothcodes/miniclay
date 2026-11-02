@@ -47,14 +47,26 @@ GITHUB_REPOS = [
 ]
 
 
+# Fake internet: company sites, GitHub API, DuckDuckGo HTML results, DNS-over-HTTPS.
+SITES = {
+    "acmeai.dev": {"/": "acme_home.html", "/pricing": "acme_pricing.html", "/trust": "acme_security.html"},
+    "tinyfix.ai": {"/": "tinyfix_home.html"},
+    "sweetcrumb.co": {"/": "bakery_home.html"},
+}
+SEARCH_RESULTS = {  # (company name in query, kind) -> fixture
+    ("Acme AI", "linkedin"): "ddg_linkedin.html",
+    ("Acme AI", "news"): "ddg_news.html",
+    ("TinyFix", "linkedin"): "ddg_tinyfix_linkedin.html",
+}
+
+
 def acme_handler(request: httpx.Request) -> httpx.Response:
-    """Fake internet for acmeai.dev: site pages, GitHub API, DuckDuckGo HTML, DNS-over-HTTPS."""
     host, path = request.url.host, request.url.path
     html = {"content-type": "text/html; charset=utf-8"}
-    if host == "acmeai.dev":
-        pages = {"/": "acme_home.html", "/pricing": "acme_pricing.html", "/trust": "acme_security.html"}
-        if path in pages:
-            return httpx.Response(200, text=fixture(pages[path]), headers=html)
+    if host in SITES:
+        page = SITES[host].get(path)
+        if page:
+            return httpx.Response(200, text=fixture(page), headers=html)
         return httpx.Response(404, text="not found", headers=html)
     if host == "api.github.com":
         if path == "/orgs/acme-ai":
@@ -64,10 +76,12 @@ def acme_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"message": "Not Found"})
     if host == "html.duckduckgo.com":
         query = parse_qs(request.content.decode()).get("q", [""])[0]
-        name = "ddg_linkedin.html" if "linkedin.com" in query else "ddg_news.html"
+        kind = "linkedin" if "linkedin.com" in query else "news"
+        name = next((f for (company, k), f in SEARCH_RESULTS.items() if k == kind and f'"{company}"' in query), "ddg_empty.html")
         return httpx.Response(200, text=fixture(name), headers=html)
     if host == "cloudflare-dns.com":
-        return httpx.Response(200, json={"Status": 0, "Answer": [{"type": 15, "data": "10 mx.acmeai.dev."}]})
+        domain = request.url.params.get("name", "")
+        return httpx.Response(200, json={"Status": 0, "Answer": [{"type": 15, "data": f"10 mx.{domain}."}]})
     return httpx.Response(404, text="")
 
 

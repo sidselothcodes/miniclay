@@ -21,10 +21,12 @@ import httpx
 import knowledge
 import llm
 from cache import EnrichmentCache, cache_key
-from outreach import compose_outreach, find_violations, hook_from_headline, sanitize
+from fit import LOW, assess_fit, clean_reason, is_consumer_without_ai, looks_consumer, normalize_tier
+from outreach import casual_from_headline, compose_outreach, find_violations, sanitize
 from schemas import DecisionMaker, EnrichedCompany, EnrichmentRow
 from settings import (
     ALL_SOURCES,
+    DEFAULT_SELLER_CONTEXT,
     SOURCE_GITHUB,
     SOURCE_LINKEDIN,
     SOURCE_NEWS,
@@ -37,7 +39,14 @@ from sources.http import make_client
 
 log = logging.getLogger("miniclay.enrichment")
 
-SIGNAL_PREFIXES = ["Trigger", "Stack/GitHub", "Compliance"]
+# KEY SIGNALS: each bullet's prefix adapts to what exists for the company.
+POSITION_PREFIXES = [("Launch", "Product"), ("Stack", "Traction"), ("Trust", "Scale")]
+LEGACY_PREFIXES = {
+    "trigger": "Launch", "news": "Launch", "stack/github": "Stack", "github": "Stack", "tech": "Stack",
+    "funding": "Traction", "backing": "Traction", "growth": "Traction", "compliance": "Trust",
+    "security": "Trust", "usage": "Scale", "distribution": "Scale",
+}
+LAUNCH_WORDS = re.compile(r"\b(introducing|new|now available|launch\w*|announc\w+|beta|released?|just shipped)\b", re.I)
 _cache: Optional[EnrichmentCache] = None
 
 
@@ -205,37 +214,51 @@ def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
         gtm = kb["gtm_motion"]
         fallbacks.append("gtm_motion")
     else:
-        gtm = website.infer_gtm_motion(pricing_page.text if pricing_page else "", home.text if home else "") or "Unknown"
+        gtm = website.infer_gtm_motion(pricing_page.text if pricing_page else "", home.text if home else "")
+        if not gtm:
+            gtm = "Consumer D2C" if home and looks_consumer(f"{home.title}\n{home.text}") else "Unknown"
 
-    # Signals: live evidence first, curated reference second.
+    # Signals: live evidence first, curated reference second; prefixes adapt to the company.
+    live_text = "\n".join(
+        [home.text if home else ""] + [p.text for p in bundle.subpages] + [f"{h.title}. {h.snippet}" for h in bundle.news]
+    )
+    launch_line = next((ln for ln in website.signal_lines(home.text) if LAUNCH_WORDS.search(ln)), "") if home else ""
     if bundle.news:
         top = bundle.news[0]
-        trigger = f"Trigger: {_trim_words(_clean_headline(top.title), 18)}" + (f" ({top.date})" if top.date else "")
+        first = f"Launch: {_trim_words(_clean_headline(top.title), 14)}" + (f" ({top.date})" if top.date else "")
         used.add(SOURCE_NEWS)
     elif kb_signals[0]:
-        trigger = kb_signals[0]
-        fallbacks.append("trigger")
-    elif home and website.signal_lines(home.text):
-        trigger = f"Trigger: {_trim_words(website.signal_lines(home.text)[0], 20)}"
+        first = kb_signals[0]
+        fallbacks.append("launch")
+    elif launch_line:
+        first = f"Launch: {_trim_words(launch_line, 14)}"
+    elif home and (home.meta_description or home.headings):
+        first = f"Product: {_trim_words(_first_sentence(home.meta_description or home.headings[0]), 14)}"
     else:
-        trigger = "Trigger: no recent launch found in public sources"
+        first = "Product: no public product details found"
 
+    traction = website.detect_traction(live_text)
     if bundle.github:
-        stack = f"Stack/GitHub: {github.describe_github(bundle.github)}"
+        second = f"Stack: {github.describe_github(bundle.github)}"
         used.add(SOURCE_GITHUB)
+    elif traction:
+        second = f"Traction: {traction}"
     elif kb_signals[1]:
-        stack = kb_signals[1]
-        fallbacks.append("stack")
+        second = kb_signals[1]
+        fallbacks.append("stack_or_traction")
     else:
-        stack = "Stack/GitHub: no public GitHub org found"
+        second = "Traction: no public funding, GitHub or hiring signals found"
 
+    scale = website.detect_scale(live_text)
     if bundle.compliance:
-        compliance = f"Compliance: {', '.join(bundle.compliance)} (per {bundle.domain})"
+        third = f"Trust: {', '.join(bundle.compliance)}"
+    elif scale:
+        third = f"Scale: {scale}"
     elif kb_signals[2]:
-        compliance = kb_signals[2]
-        fallbacks.append("compliance")
+        third = kb_signals[2]
+        fallbacks.append("trust_or_scale")
     else:
-        compliance = "Compliance: not published on site"
+        third = "Scale: no public usage metrics found"
 
     fields = {
         "domain": bundle.domain,
@@ -243,40 +266,65 @@ def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
         "product_and_icp": product,
         "gtm_motion": gtm,
         "pricing_tier_summary": pricing,
-        "tech_and_live_signals": [trigger, stack, compliance],
+        "tech_and_live_signals": [first, second, third],
     }
     return fields, fallbacks, used
 
 
-def _hook_sentence(bundle: SourceBundle) -> str:
-    if bundle.kb and bundle.kb.get("hook"):
-        return bundle.kb["hook"]
+def _casual_mention(bundle: SourceBundle) -> str:
+    """4-8 casual words for sentence 1 of the outreach ("saw you're rolling out ...")."""
+    if bundle.kb and bundle.kb.get("casual"):
+        return bundle.kb["casual"]
     if bundle.news:
-        return hook_from_headline(bundle.company_name, _clean_headline(bundle.news[0].title))
+        return casual_from_headline(bundle.company_name, _clean_headline(bundle.news[0].title))
     if bundle.homepage:
-        lines = website.signal_lines(bundle.homepage.text)
-        if lines:
-            return f"Saw this on {bundle.domain}: “{_trim_words(lines[0], 14).rstrip('.')}”."
-    return f"Saw {bundle.company_name}'s latest product updates on {bundle.domain}."
+        # "Introducing the TinyFix voice agent: ..." -> "saw you're launching the TinyFix voice agent"
+        for line in [*bundle.homepage.headings, *website.signal_lines(bundle.homepage.text)]:
+            match = re.match(r"^\s*(?:introducing|meet|announcing)\s+(.{3,60}?)(?:[:,.!]|\s[-\u2013\u2014]\s|$)", line, re.I)
+            if match:
+                return f"saw you're launching {_trim_words(match.group(1), 6).rstrip('…')}"
+    return f"been looking at what {bundle.company_name} is building"
 
 
 def _normalize_signals(signals: List[str], fallback: List[str]) -> List[str]:
     out: List[str] = []
-    for i, prefix in enumerate(SIGNAL_PREFIXES):
+    for i, allowed in enumerate(POSITION_PREFIXES):
         item = signals[i].strip() if i < len(signals) and signals[i] else ""
         if not item:
             item = fallback[i]
-        if not re.match(rf"^\s*{re.escape(prefix)}\s*:", item, re.I):
-            body = re.sub(r"^[^:]{1,20}:\s*", "", item)
-            item = f"{prefix}: {body}"
-        out.append(item)
+        match = re.match(r"^\s*\**([^:*]{2,24})\**\s*:\s*(.*)$", item, re.S)
+        prefix, body = (match.group(1).strip(), match.group(2).strip()) if match else ("", item)
+        canonical = next((a for a in allowed if a.lower() == prefix.lower()), None)
+        canonical = canonical or LEGACY_PREFIXES.get(prefix.lower())
+        if canonical not in allowed:
+            canonical, body = allowed[0], (body if prefix else item)
+        out.append(f"{canonical}: {body}")
     return out
+
+
+def fit_evidence(bundle: SourceBundle) -> str:
+    parts: List[str] = []
+    if bundle.homepage:
+        home = bundle.homepage
+        parts += [home.title, home.meta_description, " ".join(home.headings), home.text]
+    parts += [p.text for p in bundle.subpages]
+    parts += [f"{h.title}. {h.snippet}" for h in bundle.news]
+    if bundle.github:
+        parts.append(" ".join([bundle.github.get("description", "")] + [r.get("description", "") for r in bundle.github.get("top_repos", [])]))
+    if bundle.kb:
+        parts += [bundle.kb.get("product_and_icp", "")] + list(bundle.kb.get("signals", []))
+    return "\n".join(p for p in parts if p)
+
+
+def _same_context(a: str, b: str) -> bool:
+    squash = lambda t: re.sub(r"\s+", " ", t).strip().lower()  # noqa: E731
+    return squash(a) == squash(b)
 
 
 def _placeholder_dm(company_name: str) -> dict:
     return {
         "full_name": "Not found",
-        "role": "No public CTO / VP Eng profile found",
+        "role": "No public founder, CTO or VP Eng profile found",
         "linkedin_url": contacts.linkedin_search_url("CTO", company_name),
         "work_email": "",
         "email_alternates": [],
@@ -334,15 +382,43 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
         generated_by = "llm"
     else:
         fields = rules
-        outreach = compose_outreach(
-            first_name, bundle.company_name, _hook_sentence(bundle), seller_context,
-            surface=(bundle.kb or {}).get("surface"),
-        )
+        outreach = ""
         generated_by = "rules"
 
-    # Final guardrail: greeting must match the grounded decision maker; no banned words.
-    if first_name and find_violations(outreach, first_name):
-        outreach = sanitize(re.sub(r"^\s*Hi [^—\-,]+[—\-,]\s*", "", outreach), first_name)
+    # WHY THEY FIT. Curated fit only applies to the default pitch; anything else is judged on evidence.
+    evidence = fit_evidence(bundle)
+    default_pitch = _same_context(seller_context, DEFAULT_SELLER_CONTEXT)
+    kb = bundle.kb or {}
+    kb_fit = kb.get("fit") if default_pitch else None
+    if kb_fit:
+        rules_tier, rules_reason = kb_fit["tier"], kb_fit["reason"]
+    else:
+        rules_tier, rules_reason = assess_fit(seller_context, bundle.company_name, evidence)
+    if llm_result:
+        fit_tier = normalize_tier(llm_result.fit_tier) or rules_tier
+        fit_reason = clean_reason(llm_result.fit_reason) or rules_reason
+        if fit_tier != LOW and is_consumer_without_ai(seller_context, evidence):
+            fit_tier, fit_reason = rules_tier, rules_reason  # honesty floor: no manufactured AI fit
+    else:
+        fit_tier, fit_reason = rules_tier, rules_reason
+        if kb_fit:
+            fallbacks.append("fit")
+
+    # OUTREACH DRAFT: none for low-fit companies; otherwise human, short, dash-free.
+    if fit_tier == LOW:
+        outreach = ""
+    else:
+        if not outreach:
+            same_person = kb.get("decision_maker", {}).get("full_name") == chosen["full_name"]
+            if default_pitch and same_person and kb.get("outreach_default"):
+                outreach = kb["outreach_default"]
+            else:
+                outreach = compose_outreach(first_name, bundle.company_name, _casual_mention(bundle), seller_context)
+        if find_violations(outreach, first_name):
+            cleaned = sanitize(outreach, first_name)
+            if find_violations(cleaned, first_name):
+                cleaned = compose_outreach(first_name, bundle.company_name, _casual_mention(bundle), seller_context)
+            outreach = cleaned
 
     source_urls: Dict[str, List[str]] = {}
     if bundle.homepage:
@@ -359,6 +435,8 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
     sources_used = [s for s in ALL_SOURCES if s in used]
     return EnrichmentRow(
         **fields,
+        fit_tier=fit_tier,
+        fit_reason=fit_reason,
         decision_maker=decision_maker,
         ai_outreach=outreach,
         sources_used=sources_used,
