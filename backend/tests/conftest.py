@@ -54,6 +54,8 @@ SITES = {
     "chargebee.com": {"/": "chargebee_home.html"},
     "quietco.dev": {"/": "quietco_home.html", "/team": "quietco_team.html"},
     "senseai.ai": {"/": "senseai_home.html", "/team/": "senseai_team.html"},
+    "inuka.vc": {"/": "inuka_home.html"},
+    "northstar.com": {"/": "northstar_home.html"},
 }
 SEARCH_RESULTS = {
     ("Acme AI", "linkedin"): "ddg_linkedin.html",

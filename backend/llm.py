@@ -28,6 +28,7 @@ Ground rules:
 
 Fields:
 - company_name: the short global brand name. Never add a country or region suffix picked up from a geo-redirected regional page (write "Razorpay", not "Razorpay USA").
+  Many sites are built on Notion, Webflow, Framer, WordPress, Wix, Squarespace, Substack or Carrd, or served through Cloudflare or Vercel. Never name or describe that tool as the company unless the TARGET domain is the tool's own site; identify the company from the TARGET domain and its own page content (e.g. inuka.vc is Inuka, not Notion).
 - product_and_icp: ONE sentence, max 22 words, no buzzwords: what they build and who buys it (team, role or company type).
 - gtm_motion: 1-3 words, e.g. "Usage-Based", "Freemium PLG", "Sales-Led Enterprise", "Self-Serve SaaS", "Consumer D2C".
 - pricing_tier_summary: concrete figures copied from [Pricing], max 70 characters, e.g. "$20/user/mo + usage", "2.9% + 30¢ per tx". If no figures: "Custom / contact sales" or "Pricing not public".
@@ -35,6 +36,7 @@ Fields:
   1. "Launch: ..." a recent feature, launch or release (with month/year if known), OR "Product: ..." the core workflow or product wedge when nothing recent is public.
   2. "Stack: ..." public GitHub repos, SDKs, APIs or integrations (dev and B2B tools), OR "Traction: ..." backing (YC batch, seed/Series round), customer vertical, or hiring/growth signals (small startups and consumer apps).
   3. "Trust: ..." compliance (SOC 2, ISO 27001, HIPAA, PCI DSS) for enterprise sellers, OR "Scale: ..." a usage/volume metric, distribution channel, or operational bottleneck for startups and consumer companies.
+- Investment firms (VC funds, angel networks, family offices): gtm_motion is "Early-Stage VC", "Multi-Stage VC" or "Venture Fund"; pricing_tier_summary is their stage or check focus (e.g. "Seed to Pre-Series A", "Seed to Growth"), never "Custom / contact sales" or "Pricing not public"; tech_and_live_signals use "Focus: ..." (stages, sectors, geographies), "Portfolio: ..." (count, notable companies) and "Scale: ..." (AUM, fund size) or "Stack: ..." (the firm's own tools). Describe the fund itself, never one portfolio company's product.
 - fit_tier: how well the SELLER's product solves a problem this company has today. One of "Strong Fit", "Moderate Fit", "Low Fit".
   Strong: evidence shows they run the exact workflow the seller's product addresses. Moderate: adjacent or early signals. Low: no evidence of that workflow (consumer brands, offline businesses, unrelated products).
   Never invent AI, LLM or other usage to manufacture a fit. A bakery or apparel brand is "Low Fit" for an LLM tool. When unsure, pick the lower tier.
@@ -54,11 +56,12 @@ Outreach rules (strict; it must read like a real person typed it):
 2. 2-3 short sentences, 30-40 words total.
 3. Mention their product the way an insider would, in 4-6 casual words. Never recite conference names, dates, version numbers or feature lists back to them, and no parentheses.
 4. Sentence 2: one plain-English line about the specific headache the seller's product solves for that feature.
-5. Sentence 3: a low-pressure question, e.g. "Are you building evals for that in-house, or open to a quick look?"
+5. Sentence 3: a low-pressure question, e.g. "Are you building that in-house, or open to a quick look?"
+   Only mention evals or evaluation if the SELLER CONTEXT is about evaluation; otherwise talk about what the seller actually sells.
 6. Never use em-dashes (—), en-dashes or double hyphens (--). Use commas and periods. No exclamation marks, no emojis, no sign-off.
 7. Banned words and phrases: {", ".join(f'"{w}"' for w in BANNED_DISPLAY)}.
 
-Style examples (seller: LLM evaluation and observability):
+Style examples (only for a seller of LLM evaluation and observability; copy the tone, not the words):
 "Hey Emily, saw you're rolling out agent checkout on Link. We help teams catch hallucinated cart items and policy misses before an agent actually triggers a charge. Are you building evals for that in-house, or open to a quick look?"
 "Hey Tuomas, been playing with the new Linear Agent for auto-triage. How are you testing that prompt or model updates don't quietly mislabel bug priorities? We built a simple way to replay real triage traces if you're ever curious."
 """
@@ -87,6 +90,11 @@ def build_evidence(bundle: "SourceBundle", seller_context: str) -> str:
             "Note: this is a geo-redirected regional page served to a US server; describe the company's main "
             "business and use its global brand name.\n" if home.regional else ""
         )
+        if home.host_platform:
+            regional_note += (
+                f"Note: this site is built on {home.host_platform}; ignore {home.host_platform}'s own branding and "
+                f"describe {bundle.domain}.\n"
+            )
         blocks.append(
             f"[Website] {home.url}\nTitle: {home.title}\nMeta: {home.meta_description}\n{regional_note}"
             f"Headings: {' | '.join(home.headings[:10])}\n"
@@ -128,10 +136,13 @@ def build_evidence(bundle: "SourceBundle", seller_context: str) -> str:
         ]
         blocks.append("[Contacts] people already parsed from the evidence:\n" + "\n".join(lines))
     if bundle.kb:
-        kb = {k: bundle.kb[k] for k in ("company_name", "product_and_icp", "gtm_motion", "pricing_tier_summary", "signals") if k in bundle.kb}
+        keys = ("company_name", "product_and_icp", "gtm_motion", "pricing_tier_summary", "signals")
+        kb = {k: bundle.kb[k] for k in keys if k in bundle.kb}
+        if bundle.kb.get("casual"):
+            kb["opener_hint"] = bundle.kb["casual"]
         blocks.append(
-            "[Reference] curated, manually verified notes; use only to fill gaps the live evidence doesn't cover:\n"
-            + json.dumps(kb, ensure_ascii=False)
+            "[Reference] curated, manually verified notes; use them to fill gaps the live evidence doesn't cover. "
+            "If opener_hint is present, build sentence 1 of the email around it:\n" + json.dumps(kb, ensure_ascii=False)
         )
     text = "\n\n".join(blocks)
     return text[:MAX_CONTEXT_CHARS]
@@ -198,7 +209,7 @@ async def synthesize(bundle: "SourceBundle", seller_context: str) -> Optional[En
         result.ai_outreach = ""
         return result
     first_name = first_name_of(result.decision_maker.full_name) or f"{result.company_name} team"
-    issues = find_violations(result.ai_outreach, first_name)
+    issues = find_violations(result.ai_outreach, first_name, seller_context)
     if issues:
         try:
             fixed = await _repair_outreach(client, result.ai_outreach, issues, first_name, seller_context, result.tech_and_live_signals)

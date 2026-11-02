@@ -36,12 +36,16 @@ BANNED: List[Tuple[str, Optional[str]]] = [
     (r"\blet[\u2019']?s connect\b", None),
     (r"\bbrief discussion\b", None),
     (r"\b(?:I see|noticed) (?:that )?you ship\b", None),
+    (r"\bI appreciate the\b", None),
+    (r"\bmight complement each other\b", None),
+    (r"\benhance (?:their|your)\b", None),
 ]
 BANNED_DISPLAY = [
     "I admire", "empower", "synergies", "thrilled", "game changer", "streamlines",
     "effortlessly", "love how you", "seamless", "revolutionize", "cutting-edge",
     "leverage", "excited", "unlock", "support your efforts", "support your goals", "explore how we can",
-    "let's connect", "brief discussion", "I see you ship",
+    "let's connect", "brief discussion", "I see you ship", "I appreciate the", "might complement each other",
+    "enhance their",
 ]
 
 # Em-dash, double hyphen, or a spaced en-dash.
@@ -63,7 +67,7 @@ def has_dash(text: str) -> bool:
     return bool(DASH_RE.search(text))
 
 
-def find_violations(text: str, greet_name: Optional[str]) -> List[str]:
+def find_violations(text: str, greet_name: Optional[str], seller_context: Optional[str] = None) -> List[str]:
     issues: List[str] = []
     for pattern, _ in BANNED:
         match = re.search(pattern, text, re.I)
@@ -79,6 +83,9 @@ def find_violations(text: str, greet_name: Optional[str]) -> List[str]:
         issues.append("mentions a date/year (don't recite their news back to them)")
     if "(" in text:
         issues.append("parenthetical aside")
+    eval_words = r"\bevals?\b|\bevaluation\b"
+    if seller_context is not None and re.search(eval_words, text, re.I) and not re.search(eval_words, seller_context, re.I):
+        issues.append("mentions evals, which the seller doesn't sell")
     words = word_count(text)
     if words > MAX_WORDS:
         issues.append(f"too long ({words} words, aim for 30-40)")
@@ -106,9 +113,9 @@ def sanitize(text: str, greet_name: str) -> str:
     return f"{greeting} {' '.join(sentences)}".strip()
 
 
+# Only defect-catching verbs fit "We help teams catch X before they reach users".
 PAIN_RE = re.compile(
-    r"\b(?:catch(?:es)?|detect(?:s)?|flag(?:s)?|prevent(?:s)?|find(?:s)?|monitor(?:s)?|"
-    r"track(?:s)?|reduce(?:s)?|eliminate(?:s)?|fix(?:es)?|stop(?:s)?)\s+(.+?)(?:\s+(?:in|across|for)\s+.+?)?\.?$",
+    r"\b(?:catch(?:es)?|detect(?:s)?|flag(?:s)?|prevent(?:s)?|stop(?:s)?)\s+(.+?)(?:\s+(?:in|across|for)\s+.+?)?\.?$",
     re.I,
 )
 HEADLINE_VERBS = {
@@ -130,7 +137,12 @@ def derive_pain(seller_context: str) -> Optional[str]:
 
 def _trim(text: str, max_words: int) -> str:
     words = text.split()
-    return " ".join(words[:max_words]).rstrip(",;:.")
+    if len(words) <= max_words:
+        return " ".join(words).rstrip(",;:.")
+    head = " ".join(words[:max_words])
+    # Cut at the last natural break rather than mid-phrase.
+    cut = max(head.rfind(","), head.rfind(" in "), head.rfind(" for "), head.rfind(" with "))
+    return (head[:cut] if cut > len(head) // 2 else head).rstrip(",;:.")
 
 
 def _value_sentence(seller_context: str) -> str:
@@ -140,8 +152,8 @@ def _value_sentence(seller_context: str) -> str:
     clause = re.sub(r"\s+", " ", seller_context.strip().rstrip("."))
     match = re.match(r"^(?:we|i|our team)\s+(.*)$", clause, re.I)
     if match:
-        return f"We {_trim(match.group(1), 14)}."
-    return f"We build {clause[:1].lower()}{_trim(clause[1:], 13)}."
+        return f"We {_trim(match.group(1), 18)}."
+    return f"We build {clause[:1].lower()}{_trim(clause[1:], 17)}."
 
 
 def casual_from_headline(company_name: str, headline: str) -> str:

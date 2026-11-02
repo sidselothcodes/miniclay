@@ -174,7 +174,7 @@ KNOWLEDGE: Dict[str, dict] = {
         },
         "decision_maker": {
             "full_name": "Rahul Sengottuvelu",
-            "role": "CTO (prev. Head of Applied AI)",
+            "role": "CTO",
             # No public profile URL could be verified, so this is a LinkedIn people search.
             "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Rahul+Sengottuvelu+Ramp",
         },
@@ -203,22 +203,27 @@ KNOWLEDGE: Dict[str, dict] = {
 KNOWLEDGE.update({
     "senseai.ai": {
         "company_name": "SenseAI Ventures",
-        "product_and_icp": (
-            "Early-stage venture fund backing AI-first Indian startups with seed capital plus product, growth "
-            "and go-to-market support."
-        ),
+        "investor": True,
+        # Curated by the user for the SenseAI demo; these always win over live extraction.
+        "pinned": ["product_and_icp", "gtm_motion", "pricing_tier_summary", "signals"],
+        "product_and_icp": "Early-stage venture fund backing AI-native startups across India and globally.",
+        "gtm_motion": "Early-Stage VC",
+        "pricing_tier_summary": "Seed & Pre-Series A (20+ AI cos)",
         "signals": [
-            "Product: AI-native seed fund running Haystack, an in-house AI platform for deal sourcing and memos.",
-            "Traction: $25M maiden fund for Indian AI-first startups.",
-            "Scale: seed checks plus hands-on product, growth and GTM support for portfolio founders.",
+            "Focus: Backs AI-native startups across infra, healthcare & enterprise apps",
+            "Portfolio: 20+ AI companies incl. Pipeshift, Confido Health, CureSkin & Skit.ai",
+            "Stack: Runs Haystack, an in-house AI platform for sourcing, lead enrichment & deal memos",
         ],
         "decision_maker": {
             "full_name": "Rahul Agarwalla",
-            "role": "Managing Partner",
+            "role": "Founding & Managing Partner",
             "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Rahul+Agarwalla+SenseAI",
         },
-        "casual": "saw Haystack is handling SenseAI's deal sourcing and memos",
-        "notes": "Shubham Titare is Principal. Haystack is per senseai.ai (user-reported); search didn't confirm it.",
+        "casual": "saw you run sourcing, lead enrichment and deal memos on Haystack",
+        "notes": (
+            "Shubham Titare is Principal. Portfolio names verified via F4/Inc42; the 20+ count and Haystack "
+            "are per senseai.ai (user-provided)."
+        ),
     },
     "sarvam.ai": {
         "company_name": "Sarvam AI",

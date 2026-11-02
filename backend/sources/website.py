@@ -50,6 +50,28 @@ REGION_WORDS = r"USA|US|U\.S\.|United States|UK|United Kingdom|UAE|Singapore|Mal
 REGION_SUBDOMAINS = {"us", "uk", "sg", "my", "au", "ae", "ca", "eu"}
 INDIA_HEADERS = {"Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8"}
 
+# Site builders and hosts whose branding leaks into customers' pages ("Notion" for a VC's Notion site).
+# brand -> (HTML markers, the brand's own domains)
+HOSTING_PLATFORMS: Dict[str, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
+    "Notion": (("notion-static.com", "notion.site", "notion.so/", "notionusercontent"), ("notion.so", "notion.com", "notion.site")),
+    "Webflow": (("data-wf-site", "webflow.com", "website-files.com"), ("webflow.com", "webflow.io")),
+    "Framer": (("framerusercontent.com", 'content="Framer', "framer.com/"), ("framer.com", "framer.website")),
+    "WordPress": (('content="WordPress', "/wp-content/", "/wp-includes/"), ("wordpress.com", "wordpress.org")),
+    "Wix": (("wixstatic.com", 'content="Wix.com'), ("wix.com",)),
+    "Squarespace": (("squarespace.com", "static1.squarespace"), ("squarespace.com",)),
+    "Substack": (("substackcdn.com", "substack.com"), ("substack.com",)),
+    "Carrd": (("carrd.co",), ("carrd.co",)),
+    "Super": (("super.so",), ("super.so",)),
+    "Cloudflare": ((), ("cloudflare.com",)),
+    "Vercel": ((), ("vercel.com", "vercel.app")),
+}
+HOSTING_BOILERPLATE_RE = re.compile(
+    r"all-in-one (?:connected )?workspace|connected workspace|blends your everyday work apps|"
+    r"(?:built|made|created) (?:with|in|on) (?:notion|framer|webflow|wix|squarespace|carrd|super)|"
+    r"powered by (?:notion|webflow|wordpress|framer|squarespace|wix)|website builder",
+    re.I,
+)
+
 # "$20/user/mo", "$8 per seat per month", "€10", "2.9% + 30¢"
 PRICE_RE = re.compile(
     r"(?:US)?[$€£]\s?\d[\d,]*(?:\.\d{1,2})?(?:\s?[kKmM]\b)?"
@@ -93,10 +115,11 @@ class PageData:
     links: List[str] = field(default_factory=list)
     github_orgs: List[str] = field(default_factory=list)
     regional: bool = False
+    host_platform: str = ""
 
     @property
     def is_useful(self) -> bool:
-        return len(self.title) + len(self.meta_description) + len(self.text) >= 120
+        return len(self.title) + len(self.meta_description) + len(self.text) >= 60
 
 
 def strip_www(host: str) -> str:
@@ -140,6 +163,25 @@ def looks_like_challenge(title: str, text: str) -> bool:
     return any(marker in blob for marker in CHALLENGE_MARKERS) and len(text) < 1500
 
 
+def is_hosting_brand(name: str, domain: str) -> bool:
+    """True when `name` is a site builder/host ("Notion") and `domain` isn't that brand's own site."""
+    squashed = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    for brand, (_, own_domains) in HOSTING_PLATFORMS.items():
+        if squashed == brand.lower():
+            return not any(domain == d or domain.endswith("." + d) for d in own_domains)
+    return False
+
+
+def detect_host_platform(html: str, domain: str) -> str:
+    sample = html[:300_000]
+    for brand, (markers, own_domains) in HOSTING_PLATFORMS.items():
+        if any(domain == d or domain.endswith("." + d) for d in own_domains):
+            return ""
+        if markers and any(marker in sample for marker in markers):
+            return brand
+    return ""
+
+
 def parse_page(html: str, url: str, kind: str) -> PageData:
     soup = parse_html(html)
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
@@ -177,6 +219,24 @@ def parse_page(html: str, url: str, kind: str) -> PageData:
         tag.decompose()
 
     text = clean_lines(soup.get_text("\n"), TEXT_LIMITS.get(kind, DEFAULT_TEXT_LIMIT))
+
+    # Drop the site builder's own branding so "Notion" never becomes the company.
+    domain = strip_www(urlparse(url).netloc)
+    platform = detect_host_platform(html, domain)
+    if is_hosting_brand(site_name, domain):
+        platform, site_name = platform or site_name, ""
+    if platform:
+        brand_re = re.compile(rf"\b{re.escape(platform)}\b", re.I)
+        if HOSTING_BOILERPLATE_RE.search(meta_description) or brand_re.search(meta_description):
+            meta_description = ""
+        def without_brand(line: str) -> str:
+            segments = re.split(r"\s+[|\u2013\u2014\-:\u00b7]\s+", line)
+            return " | ".join(seg for seg in segments if not brand_re.fullmatch(seg.strip()))
+
+        title = without_brand(title)
+        text = "\n".join(
+            without_brand(ln) for ln in text.splitlines() if not HOSTING_BOILERPLATE_RE.search(ln) and without_brand(ln)
+        )
     return PageData(
         url=url,
         kind=kind,
@@ -187,6 +247,7 @@ def parse_page(html: str, url: str, kind: str) -> PageData:
         text=text,
         links=links,
         github_orgs=extract_github_orgs(html),
+        host_platform=platform,
     )
 
 
@@ -439,3 +500,81 @@ def detect_scale(text: str) -> str:
         return ""
     phrase = re.sub(r"\s+", " ", match.group(0)).strip()
     return phrase[:1].upper() + phrase[1:]
+
+
+INVESTOR_TLDS = (".vc", ".capital", ".ventures", ".fund")
+# First-person investing language (strong) vs. generic VC vocabulary a vendor for VCs might also use (weak).
+INVESTOR_STRONG_RE = re.compile(
+    r"\bwe (?:invest|back|partner with|lead|write)\b|\bour (?:portfolio|fund|LPs)\b|\bassets under management\b|"
+    r"\bAUM\b|\bfund (?:I{1,3}|IV|V|\d)\b|\bcheck sizes?\b",
+    re.I,
+)
+INVESTOR_WEAK_RE = re.compile(
+    r"\bventure (?:capital|fund)\b|\bseed (?:fund|capital)\b|\bportfolio compan(?:y|ies)\b|\bpre-?seed\b|\blimited partners\b",
+    re.I,
+)
+STAGES = [
+    ("Pre-Seed", r"\bpre-?seed\b"),
+    ("Seed", r"(?<!pre-)(?<!pre)\bseed\b"),
+    ("Pre-Series A", r"\bpre-?series\s*a\b"),
+    ("Series A", r"(?<!pre-)(?<!pre)\bseries\s*a\b"),
+    ("Series B", r"\bseries\s*b\b"),
+    ("Growth", r"\bgrowth[- ]stage\b|\bgrowth fund\b"),
+    ("Late Stage", r"\blate[- ]stage\b"),
+]
+AUM_RE = re.compile(
+    r"(?:[$₹€£]\s?\d[\d.,]*\s?(?:B|M|bn|billion|million|Cr|crore)\+?)\s*(?:AUM|in assets|under management|"
+    r"(?:in )?(?:fund|funds|corpus|committed capital))",
+    re.I,
+)
+PORTFOLIO_RE = re.compile(r"\b\d[\d,]*\+?\s+(?:portfolio\s+)?(?:companies|startups|founders|investments)\b", re.I)
+INVEST_STATEMENT_RE = re.compile(r"\bwe (?:invest|back)\b|\binvest(?:s|ing)? (?:in|at)\b", re.I)
+FOCUS_RE = re.compile(r"\b(?:backing|focus(?:ed|es)? on)\b", re.I)
+
+
+def is_investment_firm(domain: str, company_name: str, own_text: str) -> bool:
+    """VC/investment firm, judged from the domain and the firm's own pages (not news about it)."""
+    if domain.endswith(INVESTOR_TLDS):
+        return True
+    strong = {m.group(0).lower() for m in INVESTOR_STRONG_RE.finditer(own_text)}
+    weak = {m.group(0).lower() for m in INVESTOR_WEAK_RE.finditer(own_text)}
+    named_like_fund = re.search(r"\b(?:Ventures|Capital|VC|Fund|Partners)\b", company_name or "")
+    return bool(strong) and (len(strong) + len(weak) >= 2 or bool(named_like_fund))
+
+
+def stage_focus(text: str) -> str:
+    """'Seed to Pre-Series A', 'Seed to Growth', 'Seed', or ''."""
+    found = [label for label, pattern in STAGES if re.search(pattern, text, re.I)]
+    if not found:
+        return ""
+    return found[0] if len(found) == 1 else f"{found[0]} to {found[-1]}"
+
+
+def vc_motion(text: str) -> str:
+    found = {label for label, pattern in STAGES if re.search(pattern, text, re.I)}
+    if found & {"Growth", "Late Stage", "Series B"} and found & {"Pre-Seed", "Seed"}:
+        return "Multi-Stage VC"
+    if found & {"Pre-Seed", "Seed", "Pre-Series A"} or re.search(r"\bearly[- ]stage\b", text, re.I):
+        return "Early-Stage VC"
+    return "Venture Fund"
+
+
+def _first_line(text: str, pattern: "re.Pattern[str]", max_words: int = 16) -> str:
+    for line in text.splitlines():
+        if pattern.search(line) and 3 <= len(line.split()) <= 40:
+            words = line.split()
+            return " ".join(words[:max_words]).rstrip(",;:.")
+    return ""
+
+
+def investor_signals(text: str) -> List[str]:
+    """Focus / Portfolio / Scale bullets for a fund, from its own pages ('' when not found)."""
+    focus = _first_line(text, INVEST_STATEMENT_RE) or _first_line(text, FOCUS_RE)
+    portfolio = _first_line(text, PORTFOLIO_RE)
+    aum = AUM_RE.search(text)
+    fund_size = re.sub(r"\s+", " ", aum.group(0)) if aum else ""
+    return [
+        f"Focus: {focus}" if focus else "",
+        f"Portfolio: {portfolio}" if portfolio else "",
+        f"Scale: {fund_size}" if fund_size else "",
+    ]

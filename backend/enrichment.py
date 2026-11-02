@@ -33,6 +33,7 @@ from sources.http import make_client
 log = logging.getLogger("miniclay.enrichment")
 
 POSITION_PREFIXES = [("Launch", "Product"), ("Stack", "Traction"), ("Trust", "Scale")]
+INVESTOR_PREFIXES = [("Focus", "Launch", "Product"), ("Portfolio", "Traction", "Stack"), ("Scale", "Stack", "Trust")]
 LEGACY_PREFIXES = {
     "trigger": "Launch", "news": "Launch", "stack/github": "Stack", "github": "Stack", "tech": "Stack",
     "funding": "Traction", "backing": "Traction", "growth": "Traction", "compliance": "Trust",
@@ -84,6 +85,19 @@ class SourceBundle:
         )
 
     @property
+    def own_text(self) -> str:
+        """The company's own words (site pages + curated description), without third-party news."""
+        pages = [self.homepage, self.team_page, *self.subpages]
+        parts = [f"{p.title}\n{p.meta_description}\n{p.text}" for p in pages if p]
+        return "\n".join(parts + [(self.kb or {}).get("product_and_icp", "")])
+
+    @property
+    def is_investor(self) -> bool:
+        if (self.kb or {}).get("investor"):
+            return True
+        return website.is_investment_firm(self.domain, self.company_name, self.own_text)
+
+    @property
     def evidence_text(self) -> str:
         pages = [self.homepage, self.team_page, *self.subpages]
         hits = [*self.news, *self.people_hits]
@@ -93,6 +107,7 @@ class SourceBundle:
         """A point of contact with email, MX status and LinkedIn link. A profile URL is only used if
         that exact linkedin.com/in/ URL appeared in the search results; otherwise it's a people search."""
         emails = contacts.email_candidates(full_name, self.domain)
+        role = contacts.clean_role_title(role, self.company_name)
         seen_profiles = {contacts.canonical_profile_url(h.url) for h in self.people_hits} - {None}
         given = contacts.canonical_profile_url(linkedin_url or "")
         profile = contacts.profile_urls(self.people_hits).get(contacts.name_key(full_name)) or (
@@ -130,10 +145,12 @@ def derive_company_name(home: Optional[website.PageData], kb: Optional[dict], do
     label = domain.split(".")[0]
     squash = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())  # noqa: E731
     if home:
-        if home.site_name and len(home.site_name.split()) <= 3:
+        if home.site_name and len(home.site_name.split()) <= 3 and not website.is_hosting_brand(home.site_name, domain):
             return website.strip_region_suffix(home.site_name, domain)
         for segment in re.split(r"\s+[|–—\-:·]\s+|:\s+", home.title):
             segment = segment.strip()
+            if website.is_hosting_brand(segment, domain):
+                continue
             if segment and len(segment.split()) <= 3 and squash(segment).startswith(squash(label)[:4]):
                 return website.strip_region_suffix(segment, domain)
     return label.capitalize()
@@ -196,6 +213,14 @@ def _clean_headline(title: str) -> str:
     return re.sub(r"\s+[|\-–—]\s+[^|\-–—]{2,40}$", "", title).strip()
 
 
+def _site_summary(home: website.PageData) -> str:
+    """Meta description, else the first heading or line that says something (5+ words), not just a name."""
+    for line in [home.meta_description, *home.headings, *home.text.splitlines()]:
+        if line and len(line.split()) >= 5:
+            return line
+    return home.meta_description or (home.headings[0] if home.headings else "")
+
+
 def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
     """Returns (fields, fields filled from reference data, live sources used)."""
     kb = bundle.kb or {}
@@ -210,8 +235,8 @@ def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
     if kb.get("product_and_icp"):
         product = kb["product_and_icp"]
         fallbacks.append("product_and_icp")
-    elif home and (home.meta_description or home.headings):
-        product = _first_sentence(home.meta_description or home.headings[0])
+    elif home and _site_summary(home):
+        product = _first_sentence(_site_summary(home))
     else:
         product = f"No product description could be fetched from {bundle.domain}."
 
@@ -250,8 +275,8 @@ def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
         fallbacks.append("launch")
     elif launch_line:
         first = f"Launch: {_trim_words(launch_line, 14)}"
-    elif home and (home.meta_description or home.headings):
-        first = f"Product: {_trim_words(_first_sentence(home.meta_description or home.headings[0]), 14)}"
+    elif home and _site_summary(home):
+        first = f"Product: {_trim_words(_first_sentence(_site_summary(home)), 14)}"
     else:
         first = "Product: no public product details found"
 
@@ -278,13 +303,27 @@ def rules_fields(bundle: SourceBundle) -> Tuple[dict, List[str], set]:
     else:
         third = "Scale: no public usage metrics found"
 
+    signals = [first, second, third]
+    if bundle.is_investor:
+        # A fund isn't a SaaS vendor: stage focus instead of pricing, and signals about the fund itself.
+        own = bundle.own_text
+        gtm = kb.get("gtm_motion") or website.vc_motion(own)
+        pricing = kb.get("pricing_tier_summary") or website.stage_focus(own) or "Stage focus not public"
+        live = website.investor_signals(own)
+        defaults = [
+            "Focus: investment focus not published on site",
+            "Portfolio: portfolio not listed on site",
+            "Scale: fund size not public",
+        ]
+        signals = [live[i] or (kb_signals[i] if i < len(kb_signals) else "") or defaults[i] for i in range(3)]
+
     fields = {
         "domain": bundle.domain,
         "company_name": bundle.company_name,
         "product_and_icp": product,
         "gtm_motion": gtm,
         "pricing_tier_summary": pricing,
-        "tech_and_live_signals": [first, second, third],
+        "tech_and_live_signals": signals,
     }
     return fields, fallbacks, used
 
@@ -302,9 +341,9 @@ def _casual_mention(bundle: SourceBundle) -> str:
     return f"been looking at what {bundle.company_name} is building"
 
 
-def _normalize_signals(signals: List[str], fallback: List[str]) -> List[str]:
+def _normalize_signals(signals: List[str], fallback: List[str], investor: bool = False) -> List[str]:
     out: List[str] = []
-    for i, allowed in enumerate(POSITION_PREFIXES):
+    for i, allowed in enumerate(INVESTOR_PREFIXES if investor else POSITION_PREFIXES):
         item = signals[i].strip() if i < len(signals) and signals[i] else ""
         if not item:
             item = fallback[i]
@@ -335,6 +374,44 @@ def fit_evidence(bundle: SourceBundle) -> str:
 def _same_context(a: str, b: str) -> bool:
     squash = lambda t: re.sub(r"\s+", " ", t).strip().lower()  # noqa: E731
     return squash(a) == squash(b)
+
+
+PINNED_FIELDS = {
+    "product_and_icp": "product_and_icp",
+    "gtm_motion": "gtm_motion",
+    "pricing_tier_summary": "pricing_tier_summary",
+    "signals": "tech_and_live_signals",
+}
+
+
+def _about_platform(text: str, brand: str) -> bool:
+    """'Notion is an AI workspace...' or "Notion's connected workspace" (not 'syncs with Notion')."""
+    return bool(
+        re.match(rf"^\W*(?:\S+\s+){{0,3}}{re.escape(brand)}\b", text, re.I)
+        or re.search(rf"\b{re.escape(brand)}[\u2019']s\b", text, re.I)
+    )
+
+
+def _guard_identity(fields: dict, rules: dict, bundle: SourceBundle) -> None:
+    """A site builder or host (Notion, Webflow, Framer...) must never stand in for the company."""
+    brands = {bundle.homepage.host_platform} if bundle.homepage and bundle.homepage.host_platform else set()
+    if website.is_hosting_brand(fields["company_name"], bundle.domain):
+        brands.add(fields["company_name"])
+        fields["company_name"] = rules["company_name"]
+    for brand in brands:
+        if _about_platform(fields["product_and_icp"], brand):
+            fields["product_and_icp"] = rules["product_and_icp"]
+        if _about_platform(fields["product_and_icp"], brand):
+            fields["product_and_icp"] = f"{fields['company_name']}: no product description found on {bundle.domain}."
+
+
+def _guard_investor_fields(fields: dict, rules: dict) -> None:
+    """Funds get a VC motion and a stage focus, never SaaS pricing labels."""
+    if not re.search(r"\b(?:VC|Venture|Fund|Capital|Invest)", fields["gtm_motion"], re.I):
+        fields["gtm_motion"] = rules["gtm_motion"]
+    pricing = fields["pricing_tier_summary"]
+    if not pricing or re.search(r"contact sales|pricing not public|custom|/\s?(?:user|seat|mo)\b", pricing, re.I):
+        fields["pricing_tier_summary"] = rules["pricing_tier_summary"]
 
 
 def _placeholder_dm(company_name: str) -> dict:
@@ -383,7 +460,7 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
     first_name = contacts.first_name_of(chosen["full_name"]) if chosen["origin"] != "none" else None
     decision_maker = DecisionMaker(
         full_name=chosen["full_name"],
-        role=chosen["role"],
+        role=contacts.clean_role_title(chosen["role"], bundle.company_name) if chosen["origin"] != "none" else chosen["role"],
         linkedin_url=chosen["linkedin_url"],
         work_email=chosen["work_email"],
         email_status=chosen["email_status"],
@@ -398,7 +475,9 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
             "product_and_icp": llm_result.product_and_icp.strip() or rules["product_and_icp"],
             "gtm_motion": llm_result.gtm_motion.strip() or rules["gtm_motion"],
             "pricing_tier_summary": llm_result.pricing_tier_summary.strip() or rules["pricing_tier_summary"],
-            "tech_and_live_signals": _normalize_signals(llm_result.tech_and_live_signals, rules["tech_and_live_signals"]),
+            "tech_and_live_signals": _normalize_signals(
+                llm_result.tech_and_live_signals, rules["tech_and_live_signals"], investor=bundle.is_investor
+            ),
         }
         fetched = {
             SOURCE_WEBSITE: bool(bundle.homepage),
@@ -412,9 +491,16 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
         fallbacks = [f for f in fallbacks if f.startswith("decision_maker")]
         generated_by = "llm"
     else:
-        fields = rules
+        fields = dict(rules)
         outreach = ""
         generated_by = "rules"
+
+    _guard_identity(fields, rules, bundle)
+    if bundle.is_investor:
+        _guard_investor_fields(fields, rules)
+    for key, field_name in PINNED_FIELDS.items():
+        if key in (bundle.kb or {}).get("pinned", []):
+            fields[field_name] = bundle.kb[key]
 
     greet_name = first_name or f"{fields['company_name']} team"
 
@@ -447,9 +533,9 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
             else:
                 outreach = compose_outreach(greet_name, _casual_mention(bundle), seller_context)
         # The greeting must name the POINT OF CONTACT, or the company's team when none was found.
-        if find_violations(outreach, greet_name):
+        if find_violations(outreach, greet_name, seller_context):
             cleaned = sanitize(outreach, greet_name)
-            if find_violations(cleaned, greet_name):
+            if find_violations(cleaned, greet_name, seller_context):
                 cleaned = compose_outreach(greet_name, _casual_mention(bundle), seller_context)
             outreach = cleaned
 

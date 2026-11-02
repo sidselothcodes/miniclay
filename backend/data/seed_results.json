@@ -250,7 +250,7 @@
     "fit_reason": "Accounting agents extract invoices and post to ledgers, where one hallucinated line item becomes a financial error.",
     "decision_maker": {
       "full_name": "Rahul Sengottuvelu",
-      "role": "CTO (prev. Head of Applied AI)",
+      "role": "CTO",
       "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Rahul+Sengottuvelu+Ramp",
       "work_email": "rahul@ramp.com",
       "email_status": "Pattern Inferred",

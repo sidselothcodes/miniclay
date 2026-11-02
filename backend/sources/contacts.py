@@ -106,6 +106,26 @@ def _clean_role(raw: str, company_name: str, labels: List[str]) -> str:
     return _canonical_role(labels)
 
 
+def clean_role_title(role: str, company_name: str = "") -> str:
+    """Short title from a messy one: 'Partner at PeaK XV in SF (fka Sequoia India ...Rohit Agarwal' -> 'Partner'."""
+    raw = re.sub(r"\s+", " ", role or "").strip()
+    if not raw:
+        return raw
+    text = re.sub(r"\([^)]*\)?", " ", raw)
+    text = re.split(
+        r"\s+(?:at|@)\s+|\s+in\s+(?=[A-Z])|\.\.\.|\u2026|\s+[|\u00b7]\s+|\s+[-\u2013\u2014]\s+|;|,\s*(?:previously|formerly|ex-)",
+        text,
+    )[0]
+    if company_name:
+        text = re.sub(rf"\b{re.escape(company_name)}\b", "", text, flags=re.I)
+    text = re.sub(r"\s{2,}", " ", text).strip(" ,.-")
+    labels = score_role(text or raw)[1]
+    founder_and_seat = ({"Co-Founder", "Founder"} & set(labels)) and ({"CEO", "CTO"} & set(labels))
+    if not text or len(text.split()) > 5 or text[:1].islower() or " and " in text or founder_and_seat:
+        return _canonical_role(labels) or " ".join(text.split()[:5])
+    return text.replace("Cofounder", "Co-Founder").replace("Co-founder", "Co-Founder")
+
+
 def _canonical_role(labels: List[str]) -> str:
     founder = "Co-Founder" if "Co-Founder" in labels else ("Founder" if "Founder" in labels else "")
     for seat in ("CTO", "CEO"):
