@@ -19,7 +19,6 @@ export interface EnrichmentResult {
   decision_maker: DecisionMaker | null;
   ai_outreach: string | null;
   email_alternates?: string[];
-  snapshot_date?: string | null;
   status: 'success' | 'error' | 'loading';
   error?: string | null;
 }

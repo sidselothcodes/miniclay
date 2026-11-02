@@ -13,7 +13,6 @@ DEFAULT_SELLER_CONTEXT = (
     "We build an automated LLM evaluation and observability engine that catches "
     "hallucinations, retrieval regressions, and latency spikes in production AI workflows."
 )
-DEFAULT_DOMAINS = ["stripe.com", "notion.so", "vercel.com", "linear.app", "ramp.com"]
 
 MAX_DOMAINS = 25
 MAX_SELLER_CONTEXT_CHARS = 600
@@ -32,7 +31,6 @@ LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "40"))
 
 CACHE_TTL_HOURS = float(os.getenv("CACHE_TTL_HOURS", "168"))
 DB_PATH = os.getenv("MINICLAY_DB", str(BASE_DIR / "miniclay.db"))
-SEED_PATH = BASE_DIR / "data" / "seed_results.json"
 
 SOURCE_WEBSITE = "Website"
 SOURCE_PRICING = "Pricing"

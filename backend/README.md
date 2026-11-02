@@ -12,14 +12,14 @@ cp .env.example .env   # add OPENAI_API_KEY
 uvicorn main:app --reload --port 8000
 ```
 
-Quick check with the 5 default domains:
+Quick check with the UI's default domains:
 
 ```bash
 curl -s -X POST localhost:8000/api/enrich -H 'Content-Type: application/json' \
-  -d '{"domains":["stripe.com","notion.so","vercel.com","linear.app","ramp.com"]}' | python -m json.tool
+  -d '{"domains":["vercel.com","notion.so","sarvam.ai","bolna.ai","razorpay.com"]}' | python -m json.tool
 ```
 
-Those 5 are pre-loaded into the cache at startup, so they return instantly. Add `"refresh": true` to force a live run, and `"seller_context": "..."` to change what the outreach pitches.
+Results are cached for 7 days per (domain, seller context). Add `"refresh": true` to force a fresh run, and `"seller_context": "..."` to change what the outreach pitches.
 
 ## API
 
@@ -57,15 +57,6 @@ pytest
 ```
 
 Tests run offline. A mocked network serves fixture pages, GitHub API responses, DuckDuckGo results and DNS answers, so the full five-source path is exercised without touching the internet.
-
-## Refresh the pre-loaded rows
-
-```bash
-python build_seed.py                 # default 5 domains
-python build_seed.py stripe.com ...  # any list
-```
-
-This runs the live pipeline and rewrites both `backend/data/seed_results.json` (cached at API startup) and `frontend/src/data/seed.json` (rendered on first page load).
 
 ## Environment variables
 

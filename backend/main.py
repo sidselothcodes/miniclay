@@ -1,47 +1,21 @@
 import asyncio
-import json
 import logging
 import os
 import re
-from contextlib import asynccontextmanager
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from enrichment import enrich_company, get_cache, normalize_domain
-from settings import (
-    DEFAULT_SELLER_CONTEXT,
-    MAX_CONCURRENCY,
-    MAX_DOMAINS,
-    MAX_SELLER_CONTEXT_CHARS,
-    SEED_PATH,
-)
+from enrichment import enrich_company, normalize_domain
+from settings import DEFAULT_SELLER_CONTEXT, MAX_CONCURRENCY, MAX_DOMAINS, MAX_SELLER_CONTEXT_CHARS
 from sources.http import make_client
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(levelname)s %(name)s: %(message)s")
-log = logging.getLogger("miniclay.api")
 
 
-def load_seed_rows() -> list:
-    try:
-        return json.loads(SEED_PATH.read_text())
-    except (OSError, ValueError) as exc:
-        log.warning("seed file not loaded: %s", exc)
-        return []
-
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    rows = load_seed_rows()
-    if rows:
-        loaded = get_cache().seed(rows, DEFAULT_SELLER_CONTEXT)
-        log.info("seeded %d cached rows (%d in seed file)", loaded, len(rows))
-    yield
-
-
-app = FastAPI(title="MiniClay API", lifespan=lifespan)
+app = FastAPI(title="MiniClay API")
 
 app.add_middleware(
     CORSMiddleware,

@@ -56,5 +56,4 @@ class EnrichmentRow(EnrichedCompany):
     email_alternates: List[str] = []
     source_urls: Dict[str, List[str]] = {}
     fallbacks: List[str] = []
-    snapshot_date: Optional[str] = None
     elapsed_ms: Optional[int] = None

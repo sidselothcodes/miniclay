@@ -4,16 +4,13 @@ import EnrichmentTable from './components/EnrichmentTable';
 import Footer from './components/Footer';
 import { enrichSingle } from './api';
 import { EnrichmentResult } from './types';
-import seedRows from './data/seed.json';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const DEFAULT_DOMAINS = 'stripe.com\nnotion.so\nvercel.com\nlinear.app\nramp.com';
+const DEFAULT_DOMAINS = 'vercel.com\nnotion.so\nsarvam.ai\nbolna.ai\nrazorpay.com';
 const DEFAULT_SELLER_CONTEXT =
   'We build an automated LLM evaluation and observability engine that catches hallucinations, retrieval regressions, and latency spikes in production AI workflows.';
 const MAX_DOMAINS = 25;
 const CONCURRENCY = 4;
-
-const SEED = seedRows as EnrichmentResult[];
 
 function normalizeDomain(raw: string): string {
   return raw
@@ -50,8 +47,7 @@ function loadingRow(domain: string): EnrichmentResult {
 function App() {
   const [input, setInput] = useState(DEFAULT_DOMAINS);
   const [sellerContext, setSellerContext] = useState(DEFAULT_SELLER_CONTEXT);
-  const [results, setResults] = useState<EnrichmentResult[]>(SEED);
-  const [showingSnapshot, setShowingSnapshot] = useState(SEED.length > 0);
+  const [results, setResults] = useState<EnrichmentResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -63,7 +59,6 @@ function App() {
     if (domains.length === 0) return;
 
     setIsLoading(true);
-    setShowingSnapshot(false);
     setResults(domains.map(loadingRow));
 
     const update = (index: number, row: EnrichmentResult) =>
@@ -86,8 +81,6 @@ function App() {
     setIsLoading(false);
   };
 
-  const snapshotDate = SEED[0]?.snapshot_date;
-
   return (
     <div className="app">
       <header className="header">
@@ -106,26 +99,11 @@ function App() {
         maxDomains={MAX_DOMAINS}
       />
 
-      {showingSnapshot && (
-        <p className="table-note">
-          <span className="table-note-dot" />
-          Pre-loaded snapshot{snapshotDate ? ` · researched ${formatDate(snapshotDate)}` : ''} · hit Enrich → to run the
-          live pipeline
-        </p>
-      )}
-
       <EnrichmentTable results={results} />
 
       <Footer />
     </div>
   );
-}
-
-function formatDate(iso: string): string {
-  const date = new Date(`${iso}T00:00:00`);
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default App;

@@ -17,7 +17,7 @@ Built by [Siddarth Seloth](https://linkedin.com/in/siddarthseloth)
 4. **Why They Fit** rates each company Strong / Moderate / Low against your value prop. It never invents a fit: a bakery is a Low Fit for an LLM tool, and low-fit companies get no draft
 5. Outreach drafts read like a person wrote them: "Hey Emily," plus 2–3 short sentences (30–40 words), no em-dashes, no dates or feature lists recited back, no banned phrases. The point of contact and email are grounded in what the pipeline actually found
 
-No paid enrichment APIs. If a source gets blocked (cloud IPs are often rate-limited), the row still renders. Search falls back from DDGS to DuckDuckGo HTML to Bing HTML, and well-known companies fall back to curated reference data. The default 5 domains are pre-loaded, so the table is populated on first visit.
+No paid enrichment APIs. If a source gets blocked (cloud IPs are often rate-limited), the row still renders. Search falls back from DDGS to DuckDuckGo HTML to Bing HTML, and well-known companies fall back to curated reference data. The page opens with a sample value prop and five domains filled in; every Enrich is a live run.
 
 ## Tech Stack
 
@@ -26,4 +26,4 @@ No paid enrichment APIs. If a source gets blocked (cloud IPs are often rate-limi
 - **AI:** OpenAI GPT-4o-mini (structured outputs)
 - **Deployment:** Vercel (frontend) + Railway (backend)
 
-Developer notes (running locally, tests, refreshing the pre-loaded rows) are in [`backend/README.md`](backend/README.md).
+Developer notes (running locally, API, tests, configuration) are in [`backend/README.md`](backend/README.md).

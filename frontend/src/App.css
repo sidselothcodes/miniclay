@@ -441,23 +441,6 @@ body {
   }
 }
 
-.table-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--clay-gray-500);
-  margin: 0 0 10px 4px;
-}
-
-.table-note-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--clay-orange);
-  flex-shrink: 0;
-}
-
 
 .pill {
   display: inline-block;

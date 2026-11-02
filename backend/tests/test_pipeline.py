@@ -1,15 +1,15 @@
 import html
-import json
 import re
+from pathlib import Path
 
 import enrichment
+import knowledge
 from fit import LOW, TIERS
 from outreach import find_violations, has_dash, word_count
 from schemas import ContactPick, EnrichedCompany, EnrichmentRow
-from settings import DEFAULT_SELLER_CONTEXT, SEED_PATH
+from settings import DEFAULT_SELLER_CONTEXT
 
-FRONTEND = SEED_PATH.parents[2] / "frontend" / "src"
-FRONTEND_SEED = FRONTEND / "data" / "seed.json"
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src"
 SIGNAL_PREFIXES = [("Launch", "Product"), ("Stack", "Traction"), ("Trust", "Scale")]
 
 
@@ -157,21 +157,23 @@ async def test_llm_output_is_grounded(acme_client):
     assert row["generated_by"] == "llm"
 
 
-def test_seed_rows_are_valid_and_in_sync():
-    backend_rows = json.loads(SEED_PATH.read_text())
-    assert backend_rows == json.loads(FRONTEND_SEED.read_text())
-    assert [r["domain"] for r in backend_rows] == ["stripe.com", "notion.so", "vercel.com", "linear.app", "ramp.com"]
-    for row in backend_rows:
-        EnrichmentRow.model_validate(row)
-        dm = row["decision_maker"]
-        assert dm["linkedin_url"].startswith("https://www.linkedin.com/")
-        assert dm["work_email"].endswith("@" + row["domain"])
-        assert any(ch.isdigit() for ch in row["pricing_tier_summary"])
-        assert "AI" not in row["sources_used"]
-        assert_adaptive_signals(row["tech_and_live_signals"])
-        assert row["fit_tier"] in TIERS
-        assert row["fit_reason"] and len(row["fit_reason"].split()) <= 20
-        assert_human_outreach(row["ai_outreach"], dm["full_name"].split()[0])
+def test_curated_reference_data_passes_the_outreach_rules():
+    for domain, kb in knowledge.KNOWLEDGE.items():
+        dm = kb["decision_maker"]
+        assert dm["linkedin_url"].startswith("https://www.linkedin.com/"), domain
+        assert len(kb.get("signals", [])) == 3, domain
+        if "fit" in kb:
+            assert kb["fit"]["tier"] in TIERS
+            assert len(kb["fit"]["reason"].split()) <= 20
+        if "outreach_default" in kb:
+            assert_human_outreach(kb["outreach_default"], dm["full_name"].split()[0])
+
+
+def test_frontend_ships_no_preloaded_rows():
+    app = (FRONTEND / "App.tsx").read_text()
+    assert "useState<EnrichmentResult[]>([])" in app
+    assert "seed" not in app.lower() and "snapshot" not in app.lower()
+    assert not (FRONTEND / "data").exists()
 
 
 def test_table_has_seven_columns_and_no_sources_column():

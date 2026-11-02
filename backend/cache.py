@@ -12,7 +12,7 @@ import re
 import sqlite3
 import threading
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from settings import CACHE_TTL_HOURS, DB_PATH
 
@@ -57,26 +57,13 @@ class EnrichmentCache:
             return None
         return json.loads(row[0])
 
-    def set(self, key: str, domain: str, payload: dict, replace: bool = True) -> None:
-        verb = "INSERT OR REPLACE" if replace else "INSERT OR IGNORE"
+    def set(self, key: str, domain: str, payload: dict) -> None:
         with self._lock:
             if self._conn is None:
-                if replace or key not in self._memory:
-                    self._memory[key] = (time.time(), payload)
+                self._memory[key] = (time.time(), payload)
                 return
             self._conn.execute(
-                f"{verb} INTO enrichments (key, domain, payload, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO enrichments (key, domain, payload, created_at) VALUES (?, ?, ?, ?)",
                 (key, domain, json.dumps(payload), time.time()),
             )
             self._conn.commit()
-
-    def seed(self, rows: List[dict], seller_context: str) -> int:
-        """Pre-load rows for the default seller context. Fresh live results are kept;
-        missing or expired entries are (re)filled from the seed."""
-        loaded = 0
-        for row in rows:
-            key = cache_key(row["domain"], seller_context)
-            if self.get(key) is None:
-                self.set(key, row["domain"], row, replace=True)
-                loaded += 1
-        return loaded
