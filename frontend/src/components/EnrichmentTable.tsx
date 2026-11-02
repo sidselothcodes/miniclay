@@ -37,6 +37,13 @@ function splitPrefix(signal: string): [string, string] {
   return match ? [match[1], match[2]] : ['', signal];
 }
 
+const CONTACT_SOURCE: Record<string, string> = {
+  linkedin: 'Found in LinkedIn search results',
+  web: 'Named in public search results or on the company site',
+  knowledge: 'Known executive (model knowledge); verify before sending',
+  reference: 'From curated research',
+};
+
 function linkedinLabel(url: string): string {
   const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
   return match ? `in/${decodeURIComponent(match[1])}` : 'Find on LinkedIn';
@@ -67,7 +74,9 @@ const DecisionMakerCell: React.FC<{ dm: DecisionMaker | null; alternates?: strin
 
   return (
     <>
-      <div className="dm-name">{dm.full_name}</div>
+      <div className="dm-name" title={CONTACT_SOURCE[dm.source || '']}>
+        {dm.full_name}
+      </div>
       <div className="dm-role">{dm.role}</div>
       <div className="dm-links">
         <a className="linkedin-badge" href={dm.linkedin_url} target="_blank" rel="noopener noreferrer" title={dm.linkedin_url}>

@@ -12,7 +12,7 @@ Built by [Siddarth Seloth](https://linkedin.com/in/siddarthseloth)
    - **Pricing**: concrete price points from the pricing page
    - **GitHub**: the company's org, public repo count, top repos and languages
    - **News**: recent launches, funding and changelog items from a free DuckDuckGo search
-   - **LinkedIn**: a CTO / Head of AI / VP Eng, or the Founder/CEO at small startups, found through search, plus an inferred work email checked against the domain's MX records
+   - **People**: a CTO / Head of AI / VP Eng, or the Founder/CEO at small startups, from LinkedIn search, a general leadership search, and the company's team/leadership page. For well-known companies where search comes back empty, the LLM can name a current exec it's highly confident about. Every contact gets a `first@domain` email checked against the domain's MX records
 3. GPT-4o-mini turns that evidence into a strict Pydantic schema. Key signals adapt to the company (Launch/Product, Stack/Traction, Trust/Scale), so 5-person startups and consumer apps get useful bullets too
 4. **Why They Fit** rates each company Strong / Moderate / Low against your value prop. It never invents a fit: a bakery is a Low Fit for an LLM tool, and low-fit companies get no draft
 5. Outreach drafts read like a person wrote them: "Hey Emily," plus 2–3 short sentences (30–40 words), no em-dashes, no dates or feature lists recited back, no banned phrases. The point of contact and email are grounded in what the pipeline actually found

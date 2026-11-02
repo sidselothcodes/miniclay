@@ -72,7 +72,7 @@ def test_casual_mention_from_headline():
     "An AI SDR that books qualified meetings for home-service companies.",
 ])
 def test_composed_outreach_is_short_and_human(context):
-    text = compose_outreach("Tuomas", "Linear", "been playing with the new Linear Agent for auto-triage", context)
+    text = compose_outreach("Tuomas", "been playing with the new Linear Agent for auto-triage", context)
     assert text.startswith("Hey Tuomas, been playing")
     assert find_violations(text, "Tuomas") == [], text
     assert 25 <= word_count(text) <= 40
@@ -111,6 +111,12 @@ def test_non_ai_seller_uses_keyword_overlap():
     assert tier in (STRONG, MODERATE)
     tier, reason = assess_fit(seller, "Sweet Crumb", "Fresh pastries baked daily.")
     assert tier == LOW and "Sweet Crumb" in reason
+
+
+def test_composer_greets_nobody_when_contact_is_unknown():
+    text = compose_outreach(None, "been looking at what Acme is building", DEFAULT_SELLER_CONTEXT)
+    assert text.startswith("Hey there, been looking")
+    assert find_violations(text, "there") == []
 
 
 def test_word_ceiling_is_45():

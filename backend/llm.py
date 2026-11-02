@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from outreach import BANNED_DISPLAY, find_violations
 from schemas import EnrichedCompany
 from settings import LLM_TIMEOUT, OPENAI_MODEL
+from sources.contacts import first_name_of
 
 if TYPE_CHECKING:
     from enrichment import SourceBundle
@@ -22,7 +23,7 @@ MAX_CONTEXT_CHARS = 14000
 SYSTEM_PROMPT = f"""You are a senior B2B GTM research analyst. You turn raw evidence scraped about ONE company into a strict JSON record for outbound sales. The company may be a large enterprise, a 5-person startup, or a consumer brand; adapt to what the evidence shows.
 
 Ground rules:
-- Use only facts present in the evidence blocks ([Website], [Pricing], [GitHub], [News], [LinkedIn], [Reference]). Never invent people, URLs, numbers, launches, funding or certifications.
+- Use only facts present in the evidence blocks ([Website], [Pricing], [GitHub], [News], [Team], [People], [Contacts], [Reference]). Never invent URLs, numbers, launches, funding or certifications. The only exception is decision_maker rule 2 below.
 - Prefer the most recent dated evidence. When evidence for a field is missing, say so plainly instead of guessing.
 
 Fields:
@@ -38,12 +39,16 @@ Fields:
   Strong: evidence shows they run the exact workflow the seller's product addresses. Moderate: adjacent or early signals. Low: no evidence of that workflow (consumer brands, offline businesses, unrelated products).
   Never invent AI, LLM or other usage to manufacture a fit. A bakery or apparel brand is "Low Fit" for an LLM tool. When unsure, pick the lower tier.
 - fit_reason: ONE sentence, max 20 words, specific to this company and the seller, e.g. "Consumer retail brand with no customer-facing LLM workflows in production."
-- decision_maker: pick exactly ONE person from the [LinkedIn] candidates (copy full_name, role, linkedin_url, work_email and email_status exactly as given). Prefer CTO > Head of AI > VP of Engineering; at startups with no such roles (or under ~20 people) pick the Founder/CEO or Co-Founder/CTO.
+- decision_maker: the best point of contact, chosen in this order:
+  1. A person the evidence names ([Contacts], [People], [Team], [News], [Website]) as a CURRENT Founder, Co-Founder, CEO, CTO, Head of AI or VP of Engineering at THIS company. Prefer CTO > Head of AI > VP of Engineering; at startups under ~20 people prefer the Founder/CEO or Co-Founder/CTO. Set source "evidence".
+  2. Only if the evidence names nobody: a real, current Founder/CEO/CTO of an established company that you know with high confidence (e.g. Krish Subramanian, Co-Founder & CEO of Chargebee). Set source "knowledge". Never guess for small or obscure companies.
+  3. Otherwise full_name "Not found", role "", source "none".
+  linkedin_url: copy an exact linkedin.com/in/ URL only if it appears in the evidence for that person; otherwise "". confidence: how sure you are this person holds this role today.
 - sources_used: only labels of evidence blocks you actually used, from ["Website", "Pricing", "GitHub", "News", "LinkedIn"]. Never output "AI" or "Reference".
 - ai_outreach: a short cold email from the SELLER to the decision maker. If fit_tier is "Low Fit", return an empty string.
 
 Outreach rules (strict; it must read like a real person typed it):
-1. Start exactly with "Hey <FirstName>," then continue sentence 1 casually, e.g. "Hey Emily, saw you're rolling out agent checkout on Link."
+1. Start exactly with "Hey <FirstName>," using the decision_maker's first name (or "Hey there," if decision_maker is "Not found"), then continue sentence 1 casually, e.g. "Hey Emily, saw you're rolling out agent checkout on Link."
 2. 2-3 short sentences, 30-40 words total.
 3. Mention their product the way an insider would, in 4-6 casual words. Never recite conference names, dates, version numbers or feature lists back to them, and no parentheses.
 4. Sentence 2: one plain-English line about the specific headache the seller's product solves for that feature.
@@ -104,14 +109,18 @@ def build_evidence(bundle: "SourceBundle", seller_context: str) -> str:
             for i, h in enumerate(bundle.news, 1)
         ]
         blocks.append("[News]\n" + "\n".join(lines))
+    if bundle.team_page:
+        blocks.append(f"[Team] {bundle.team_page.url}\n{bundle.team_page.text[:2000]}")
+    if bundle.people_hits:
+        lines = [f"{i}. {h.title} \u00b7 {h.snippet[:240]} <{h.url}>" for i, h in enumerate(bundle.people_hits[:10], 1)]
+        blocks.append("[People] leadership search results:\n" + "\n".join(lines))
     candidates = bundle.decision_maker_options()
     if candidates:
         lines = [
-            f"{i}. full_name={c['full_name']} | role={c['role']} | linkedin_url={c['linkedin_url']} | "
-            f"work_email={c['work_email']} | email_status={c['email_status']} | from={c['origin']}"
+            f"{i}. full_name={c['full_name']} | role={c['role']} | linkedin_url={c['linkedin_url']} | from={c['origin']}"
             for i, c in enumerate(candidates, 1)
         ]
-        blocks.append("[LinkedIn] decision-maker candidates (choose one):\n" + "\n".join(lines))
+        blocks.append("[Contacts] people already parsed from the evidence:\n" + "\n".join(lines))
     if bundle.kb:
         kb = {k: bundle.kb[k] for k in ("company_name", "product_and_icp", "gtm_motion", "pricing_tier_summary", "signals") if k in bundle.kb}
         blocks.append(
@@ -182,11 +191,11 @@ async def synthesize(bundle: "SourceBundle", seller_context: str) -> Optional[En
     if "low" in (result.fit_tier or "").lower():
         result.ai_outreach = ""
         return result
-    first_name = (result.decision_maker.full_name or "").split()[0] if result.decision_maker.full_name else None
+    first_name = first_name_of(result.decision_maker.full_name) or "there"
     issues = find_violations(result.ai_outreach, first_name)
     if issues:
         try:
-            fixed = await _repair_outreach(client, result.ai_outreach, issues, first_name or "there", seller_context, result.tech_and_live_signals)
+            fixed = await _repair_outreach(client, result.ai_outreach, issues, first_name, seller_context, result.tech_and_live_signals)
             if fixed:
                 result.ai_outreach = fixed
         except Exception as exc:

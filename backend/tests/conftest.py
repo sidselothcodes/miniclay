@@ -51,11 +51,14 @@ SITES = {
     "acmeai.dev": {"/": "acme_home.html", "/pricing": "acme_pricing.html", "/trust": "acme_security.html"},
     "tinyfix.ai": {"/": "tinyfix_home.html"},
     "sweetcrumb.co": {"/": "bakery_home.html"},
+    "chargebee.com": {"/": "chargebee_home.html"},
+    "quietco.dev": {"/": "quietco_home.html", "/team": "quietco_team.html"},
 }
 SEARCH_RESULTS = {
     ("Acme AI", "linkedin"): "ddg_linkedin.html",
     ("Acme AI", "news"): "ddg_news.html",
     ("TinyFix", "linkedin"): "ddg_tinyfix_linkedin.html",
+    ("Chargebee", "people"): "ddg_chargebee_people.html",
 }
 
 
@@ -75,7 +78,7 @@ def acme_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"message": "Not Found"})
     if host == "html.duckduckgo.com":
         query = parse_qs(request.content.decode()).get("q", [""])[0]
-        kind = "linkedin" if "linkedin.com" in query else "news"
+        kind = "linkedin" if "linkedin.com" in query else ("people" if '("CEO"' in query else "news")
         name = next((f for (company, k), f in SEARCH_RESULTS.items() if k == kind and f'"{company}"' in query), "ddg_empty.html")
         return httpx.Response(200, text=fixture(name), headers=html)
     if host == "cloudflare-dns.com":

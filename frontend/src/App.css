@@ -514,12 +514,6 @@ body {
   color: var(--clay-black);
 }
 
-.footer-sub {
-  color: var(--clay-gray-500);
-  font-size: 13px;
-  margin-top: 4px;
-}
-
 .footer-links {
   margin-top: 12px;
   display: flex;

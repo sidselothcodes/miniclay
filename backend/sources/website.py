@@ -42,6 +42,8 @@ GITHUB_RESERVED = {
     "education", "copilot", "premium-support", "codespaces", "issues", "pulls", "search",
 }
 
+TEAM_SLUGS = ["leadership", "team", "our-team", "founders", "people", "about", "about-us", "company"]
+
 # "$20/user/mo", "$8 per seat per month", "€10", "2.9% + 30¢"
 PRICE_RE = re.compile(
     r"(?:US)?[$€£]\s?\d[\d,]*(?:\.\d{1,2})?(?:\s?[kKmM]\b)?"
@@ -230,7 +232,7 @@ def _is_soft_404(page: PageData, final_url: str, home: Optional[PageData]) -> bo
 
 
 async def _fetch_subpage(
-    client: httpx.AsyncClient, kind: str, url: str, home: Optional[PageData]
+    client: httpx.AsyncClient, kind: str, url: str, home: Optional[PageData], min_chars: int = 120
 ) -> Optional[PageData]:
     fetched = await fetch_html(client, url, timeout=PAGE_TIMEOUT)
     if not fetched:
@@ -239,7 +241,7 @@ async def _fetch_subpage(
     page = parse_page(html, final_url, kind)
     if _is_soft_404(page, final_url, home) or looks_like_challenge(page.title, page.text):
         return None
-    return page if page.is_useful else None
+    return page if len(page.title) + len(page.meta_description) + len(page.text) >= min_chars else None
 
 
 async def fetch_subpages(
@@ -260,6 +262,23 @@ async def fetch_subpages(
                 chosen[kind] = page
     ordered = [chosen[k] for k in SUBPAGE_PRIORITY if k in chosen]
     return ordered[:limit]
+
+
+async def fetch_team_page(client: httpx.AsyncClient, domain: str, home: Optional[PageData]) -> Optional[PageData]:
+    """Leadership/team/about page: homepage links first (most specific slug wins), else /about and /team."""
+    base = home.url if home else f"https://{domain}"
+    host = strip_www(urlparse(base).netloc) or domain
+    linked: Dict[str, str] = {}
+    for link in home.links if home else []:
+        parsed = urlparse(link)
+        segments = [seg for seg in parsed.path.lower().split("/") if seg]
+        if (parsed.netloc and strip_www(parsed.netloc) != host) or not segments or len(segments) > 2:
+            continue
+        if segments[-1] in TEAM_SLUGS and segments[-1] not in linked:
+            linked[segments[-1]] = f"{parsed.scheme or 'https'}://{parsed.netloc or urlparse(base).netloc}{parsed.path}"
+    urls = [linked[slug] for slug in TEAM_SLUGS if slug in linked][:2] or [urljoin(base, "/about"), urljoin(base, "/team")]
+    pages = await asyncio.gather(*(_fetch_subpage(client, "team", url, home, min_chars=20) for url in urls))
+    return next((page for page in pages if page), None)
 
 
 def extract_price_points(text: str, limit: int = 4) -> List[str]:

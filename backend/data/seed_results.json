@@ -17,7 +17,8 @@
       "role": "Head of Data & AI",
       "linkedin_url": "https://www.linkedin.com/in/egsands",
       "work_email": "emily@stripe.com",
-      "email_status": "Pattern Inferred"
+      "email_status": "Pattern Inferred",
+      "source": "linkedin"
     },
     "ai_outreach": "Hey Emily, saw you're rolling out agent checkout on Link. We help teams catch hallucinated cart items and policy misses before an agent actually triggers a charge. Are you building evals for that in-house, or open to a quick look?",
     "sources_used": [
@@ -75,7 +76,8 @@
       "role": "CTO",
       "linkedin_url": "https://www.linkedin.com/in/max-schoening",
       "work_email": "max@notion.so",
-      "email_status": "Pattern Inferred"
+      "email_status": "Pattern Inferred",
+      "source": "linkedin"
     },
     "ai_outreach": "Hey Max, been testing Notion's custom agents across workspace docs and Slack. How are you guys making sure a model or index update doesn't quietly pull from a stale page? Built a lightweight tool to replay agent runs if you're open to a peek.",
     "sources_used": [
@@ -133,7 +135,8 @@
       "role": "CTO",
       "linkedin_url": "https://www.linkedin.com/in/malteubl",
       "work_email": "malte@vercel.com",
-      "email_status": "Pattern Inferred"
+      "email_status": "Pattern Inferred",
+      "source": "linkedin"
     },
     "ai_outreach": "Hey Malte, saw AI Gateway is handling multi-provider fallbacks on Fluid compute now. When a request falls back to a backup model, how are teams tracking shifts in answer quality vs latency? Open to seeing how we score fallback paths?",
     "sources_used": [
@@ -191,7 +194,8 @@
       "role": "Co-Founder & CTO",
       "linkedin_url": "https://www.linkedin.com/in/tuomasartman",
       "work_email": "tuomas@linear.app",
-      "email_status": "Pattern Inferred"
+      "email_status": "Pattern Inferred",
+      "source": "linkedin"
     },
     "ai_outreach": "Hey Tuomas, been playing with the new Linear Agent for auto-triage. How are you testing that prompt or model updates don't quietly mislabel bug priorities? We built a simple way to replay real triage traces if you're ever curious.",
     "sources_used": [
@@ -249,7 +253,8 @@
       "role": "CTO (prev. Head of Applied AI)",
       "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Rahul+Sengottuvelu+Ramp",
       "work_email": "rahul@ramp.com",
-      "email_status": "Pattern Inferred"
+      "email_status": "Pattern Inferred",
+      "source": "web"
     },
     "ai_outreach": "Hey Rahul, saw Ramp's accounting agents are handling invoice close and vendor payouts directly now. How is your team testing that prompt changes don't let a bad line item slip into the ledger? Open to a quick look at how we run invoice evals?",
     "sources_used": [

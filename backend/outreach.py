@@ -146,8 +146,8 @@ def casual_from_headline(company_name: str, headline: str) -> str:
     return f"saw the recent {company_name} news"
 
 
-def compose_outreach(first_name: Optional[str], company_name: str, casual: str, seller_context: str) -> str:
-    greeting = f"Hey {first_name}," if first_name else f"Hey {company_name} team,"
+def compose_outreach(first_name: Optional[str], casual: str, seller_context: str) -> str:
+    greeting = f"Hey {first_name or 'there'},"
     opener = f"{greeting} {casual.strip().rstrip('.')}."
     value = _value_sentence(seller_context)
     question = "Are you handling that in-house, or open to a quick look?"
@@ -158,4 +158,4 @@ def compose_outreach(first_name: Optional[str], company_name: str, casual: str, 
     if word_count(text) > TARGET_MAX_WORDS:
         opener = f"{greeting} {_trim(casual, max(4, len(casual.split()) - (word_count(text) - TARGET_MAX_WORDS)))}."
         text = f"{opener} {value} {question}"
-    return sanitize(text, first_name) if first_name else DASH_RE.sub(", ", text)
+    return sanitize(text, first_name or "there")

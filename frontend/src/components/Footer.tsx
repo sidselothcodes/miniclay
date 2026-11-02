@@ -6,7 +6,6 @@ const Footer: React.FC = () => {
       <p className="footer-main">
         Built by <strong>Siddarth Seloth</strong> to explore Clay's enrichment pipeline concept.
       </p>
-      <p className="footer-sub">I'd love to build the real thing.</p>
       <div className="footer-links">
         <a
           href="https://linkedin.com/in/siddarthseloth"

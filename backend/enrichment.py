@@ -16,7 +16,7 @@ import llm
 from cache import EnrichmentCache, cache_key
 from fit import LOW, assess_fit, clean_reason, is_consumer_without_ai, looks_consumer, normalize_tier
 from outreach import casual_from_headline, compose_outreach, find_violations, sanitize
-from schemas import DecisionMaker, EnrichedCompany, EnrichmentRow
+from schemas import ContactPick, DecisionMaker, EnrichedCompany, EnrichmentRow
 from settings import (
     ALL_SOURCES,
     DEFAULT_SELLER_CONTEXT,
@@ -66,6 +66,9 @@ class SourceBundle:
     github: Optional[dict] = None
     news: List[search.SearchHit] = field(default_factory=list)
     linkedin: List[contacts.Candidate] = field(default_factory=list)
+    people: List[contacts.Candidate] = field(default_factory=list)
+    people_hits: List[search.SearchHit] = field(default_factory=list)
+    team_page: Optional[website.PageData] = None
     mx_hosts: Optional[List[str]] = None
     compliance: List[str] = field(default_factory=list)
 
@@ -75,24 +78,49 @@ class SourceBundle:
 
     @property
     def has_any_data(self) -> bool:
-        return bool(self.homepage or self.subpages or self.github or self.news or self.linkedin or self.kb)
+        return bool(
+            self.homepage or self.subpages or self.team_page or self.github or self.news
+            or self.linkedin or self.people or self.kb
+        )
+
+    @property
+    def evidence_text(self) -> str:
+        pages = [self.homepage, self.team_page, *self.subpages]
+        hits = [*self.news, *self.people_hits]
+        return "\n".join([p.text for p in pages if p] + [f"{h.title}. {h.snippet}" for h in hits])
+
+    def contact(self, full_name: str, role: str, origin: str, linkedin_url: str = "") -> dict:
+        """A point of contact with email, MX status and LinkedIn link. A profile URL is only used if
+        that exact linkedin.com/in/ URL appeared in the search results; otherwise it's a people search."""
+        emails = contacts.email_candidates(full_name, self.domain)
+        seen_profiles = {contacts.canonical_profile_url(h.url) for h in self.people_hits} - {None}
+        given = contacts.canonical_profile_url(linkedin_url or "")
+        profile = contacts.profile_urls(self.people_hits).get(full_name.lower()) or (
+            given if given in seen_profiles else None
+        )
+        return {
+            "full_name": full_name,
+            "role": role,
+            "linkedin_url": profile or contacts.linkedin_search_url(full_name, self.company_name),
+            "work_email": emails[0] if emails else "",
+            "email_alternates": emails[1:],
+            "email_status": contacts.email_status(self.mx_hosts),
+            "origin": "linkedin" if profile else origin,
+        }
 
     def decision_maker_options(self) -> List[dict]:
-        status = contacts.email_status(self.mx_hosts)
+        """Live candidates (LinkedIn results, people named in snippets or team pages) by role score,
+        then the curated reference contact."""
         options: List[dict] = []
-        for cand in self.linkedin:
-            options.append({
-                "full_name": cand.full_name, "role": cand.role, "linkedin_url": cand.linkedin_url,
-                "origin": "linkedin",
-            })
+        live = sorted(self.linkedin + self.people, key=lambda c: (-c.score, "/in/" not in c.linkedin_url))
+        for cand in live:
+            if all(o["full_name"].lower() != cand.full_name.lower() for o in options):
+                options.append(self.contact(cand.full_name, cand.role, "web", cand.linkedin_url))
         kb_dm = (self.kb or {}).get("decision_maker")
         if kb_dm and all(o["full_name"].lower() != kb_dm["full_name"].lower() for o in options):
-            options.append({**kb_dm, "origin": "reference"})
-        for opt in options:
-            emails = contacts.email_candidates(opt["full_name"], self.domain)
-            opt["work_email"] = emails[0] if emails else ""
-            opt["email_alternates"] = emails[1:]
-            opt["email_status"] = status
+            option = self.contact(kb_dm["full_name"], kb_dm["role"], "reference")
+            option["linkedin_url"] = kb_dm["linkedin_url"]
+            options.append(option)
         return options
 
 
@@ -127,11 +155,12 @@ async def collect_sources(client: httpx.AsyncClient, domain: str) -> SourceBundl
     )
     company_name = derive_company_name(home, kb, domain)
 
-    subpages, gh, news, linkedin = await asyncio.gather(
+    subpages, team_page, gh, news, people_hits = await asyncio.gather(
         _guard(website.fetch_subpages(client, domain, home), "subpages", []),
+        _guard(website.fetch_team_page(client, domain, home), "team", None),
         _guard(github.discover_github(client, domain, company_name, home.github_orgs if home else []), "github", None),
         _guard(search.find_news(client, company_name, domain), "news", []),
-        _guard(contacts.find_decision_makers(client, company_name), "linkedin", []),
+        _guard(contacts.search_people(client, company_name), "people", []),
     )
     bundle = SourceBundle(
         domain=domain,
@@ -141,9 +170,12 @@ async def collect_sources(client: httpx.AsyncClient, domain: str) -> SourceBundl
         subpages=subpages,
         github=gh,
         news=news,
-        linkedin=linkedin,
+        linkedin=[c for c in contacts.rank_candidates(people_hits, company_name) if c.score >= 50][:3],
+        people_hits=people_hits,
+        team_page=team_page,
         mx_hosts=mx_hosts,
     )
+    bundle.people = contacts.extract_people(bundle.evidence_text, company_name)[:5]
     corpus = "\n".join([home.text if home else ""] + [p.text for p in subpages])
     bundle.compliance = website.detect_compliance(corpus)
     return bundle
@@ -317,31 +349,46 @@ def _placeholder_dm(company_name: str) -> dict:
     }
 
 
+def resolve_contact(bundle: SourceBundle, pick: Optional[ContactPick]) -> dict:
+    """Point of contact, in order: a person the pipeline found; a person the LLM read out of the
+    evidence; a well-known exec the LLM is highly confident about (only when evidence names nobody);
+    otherwise "Not found"."""
+    options = bundle.decision_maker_options()
+    name = re.sub(r"\s+", " ", pick.full_name if pick else "").strip()
+    if pick and contacts.first_name_of(name):
+        match = next((o for o in options if o["full_name"].lower() == name.lower()), None)
+        if match:
+            if match["origin"] != "reference" and pick.role.strip():
+                match["role"] = pick.role.strip()
+            return match
+        is_person = bool(contacts.NAME_RE.match(name))
+        role_ok = contacts.score_role(pick.role)[0] > 0
+        if is_person and role_ok and re.search(rf"\b{re.escape(name)}\b", bundle.evidence_text, re.I):
+            return bundle.contact(name, pick.role.strip(), "web", pick.linkedin_url.strip())
+        trusted_knowledge = pick.source.strip().lower() == "knowledge" and pick.confidence.strip().lower() == "high"
+        if not options and is_person and role_ok and trusted_knowledge:
+            return bundle.contact(name, pick.role.strip(), "knowledge")
+    return options[0] if options else _placeholder_dm(bundle.company_name)
+
+
 def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[EnrichedCompany]) -> EnrichmentRow:
     rules, fallbacks, used = rules_fields(bundle)
-    options = bundle.decision_maker_options()
-
-    # The LLM may only pick a decision maker the pipeline actually found.
-    chosen = None
-    if llm_result:
-        wanted = re.sub(r"\s+", " ", llm_result.decision_maker.full_name or "").strip().lower()
-        chosen = next((o for o in options if o["full_name"].lower() == wanted), None)
-    chosen = chosen or (options[0] if options else _placeholder_dm(bundle.company_name))
+    chosen = resolve_contact(bundle, llm_result.decision_maker if llm_result else None)
     if chosen["origin"] == "linkedin":
         used.add(SOURCE_LINKEDIN)
     elif chosen["origin"] == "reference":
         fallbacks.append("decision_maker")
-    first_name = chosen["full_name"].split()[0] if chosen["origin"] != "none" else None
-
-    role = chosen["role"]
-    if llm_result and chosen["origin"] == "linkedin" and llm_result.decision_maker.role.strip():
-        role = llm_result.decision_maker.role.strip()
+    elif chosen["origin"] == "knowledge":
+        fallbacks.append("decision_maker_from_model_knowledge")
+    first_name = contacts.first_name_of(chosen["full_name"]) if chosen["origin"] != "none" else None
+    greet_name = first_name or "there"
     decision_maker = DecisionMaker(
         full_name=chosen["full_name"],
-        role=role,
+        role=chosen["role"],
         linkedin_url=chosen["linkedin_url"],
         work_email=chosen["work_email"],
         email_status=chosen["email_status"],
+        source=chosen["origin"],
     )
 
     if llm_result:
@@ -362,7 +409,7 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
         claimed = {s.strip() for s in llm_result.sources_used}
         used = {s for s, ok in fetched.items() if ok and s in claimed} | (used & {SOURCE_LINKEDIN})
         outreach = llm_result.ai_outreach.strip()
-        fallbacks = [f for f in fallbacks if f == "decision_maker"]
+        fallbacks = [f for f in fallbacks if f.startswith("decision_maker")]
         generated_by = "llm"
     else:
         fields = rules
@@ -396,11 +443,12 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
             if default_pitch and same_person and kb.get("outreach_default"):
                 outreach = kb["outreach_default"]
             else:
-                outreach = compose_outreach(first_name, bundle.company_name, _casual_mention(bundle), seller_context)
-        if find_violations(outreach, first_name):
-            cleaned = sanitize(outreach, first_name)
-            if find_violations(cleaned, first_name):
-                cleaned = compose_outreach(first_name, bundle.company_name, _casual_mention(bundle), seller_context)
+                outreach = compose_outreach(first_name, _casual_mention(bundle), seller_context)
+        # The greeting must name the POINT OF CONTACT, or nobody ("Hey there,") when none was found.
+        if find_violations(outreach, greet_name):
+            cleaned = sanitize(outreach, greet_name)
+            if find_violations(cleaned, greet_name):
+                cleaned = compose_outreach(first_name, _casual_mention(bundle), seller_context)
             outreach = cleaned
 
     source_urls: Dict[str, List[str]] = {}

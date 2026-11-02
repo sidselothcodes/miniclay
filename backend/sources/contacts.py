@@ -1,11 +1,12 @@
 """Decision-maker discovery (LinkedIn source) and work-email inference."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 import httpx
@@ -67,7 +68,7 @@ def canonical_profile_url(url: str) -> Optional[str]:
     return f"https://www.linkedin.com/in/{match.group(3)}"
 
 
-def _score_role(text: str) -> Tuple[int, List[str]]:
+def score_role(text: str) -> Tuple[int, List[str]]:
     labels, best = [], 0
     for pattern, label, score in ROLE_RULES:
         if re.search(pattern, text, re.I):
@@ -90,6 +91,10 @@ def _clean_role(raw: str, company_name: str, labels: List[str]) -> str:
     role = re.sub(r"\s{2,}", " ", role).strip(" ,|-–—·")
     if role and len(role) <= 60 and any(re.search(p, role, re.I) for p, _, _ in ROLE_RULES):
         return role.replace("Cofounder", "Co-Founder").replace("Co-founder", "Co-Founder")
+    return _canonical_role(labels)
+
+
+def _canonical_role(labels: List[str]) -> str:
     founder = "Co-Founder" if "Co-Founder" in labels else ("Founder" if "Founder" in labels else "")
     for seat in ("CTO", "CEO"):
         if founder and seat in labels:
@@ -122,9 +127,9 @@ def parse_linkedin_hit(hit: SearchHit, company_name: str) -> Optional[Candidate]
     snippet_role = re.search(
         rf"([A-Z][\w&,/ \-]{{1,60}}?)\s+(?:at|@)\s+{re.escape(company_name)}\b", hit.snippet
     )
-    score, labels = _score_role(rest)
+    score, labels = score_role(rest)
     if snippet_role:
-        s_score, s_labels = _score_role(snippet_role.group(1))
+        s_score, s_labels = score_role(snippet_role.group(1))
         if s_score > score:
             score, labels, role_source = s_score, s_labels, snippet_role.group(1)
     if score <= 0:
@@ -152,10 +157,105 @@ def rank_candidates(hits: List[SearchHit], company_name: str) -> List[Candidate]
     return sorted(best.values(), key=lambda c: c.score, reverse=True)
 
 
-async def find_decision_makers(client: httpx.AsyncClient, company_name: str) -> List[Candidate]:
-    hits = await web_search(client, linkedin_query(company_name), max_results=10)
-    ranked = [c for c in rank_candidates(hits, company_name) if c.score >= 50]
-    return ranked[:3]
+def people_query(company_name: str) -> str:
+    return f'"{company_name}" ("CEO" OR "Co-Founder" OR "Founder" OR "CTO" OR "VP Engineering")'
+
+
+async def search_people(client: httpx.AsyncClient, company_name: str) -> List[SearchHit]:
+    """LinkedIn-scoped and general leadership searches, merged. Either may come back empty on cloud IPs."""
+    batches = await asyncio.gather(
+        web_search(client, linkedin_query(company_name), max_results=10),
+        web_search(client, people_query(company_name), max_results=10),
+    )
+    seen, hits = set(), []
+    for hit in batches[0] + batches[1]:
+        if hit.url not in seen:
+            seen.add(hit.url)
+            hits.append(hit)
+    return hits
+
+
+def profile_urls(hits: List[SearchHit]) -> Dict[str, str]:
+    """Exact linkedin.com/in/ URLs from search results, keyed by the lowercased person name in the title."""
+    urls: Dict[str, str] = {}
+    for hit in hits:
+        url = canonical_profile_url(hit.url)
+        if not url:
+            continue
+        name = CREDENTIAL_SUFFIX_RE.sub("", re.split(r"\s+[-\u2013\u2014|]\s+", hit.title)[0]).strip()
+        if NAME_RE.match(name):
+            urls.setdefault(name.lower(), url)
+    return urls
+
+
+PEOPLE_ROLE = (
+    r"(?i:co-?founder(?:\s*(?:,|&|and)\s*(?:CEO|CTO|chief executive(?: officer)?|chief technology officer))?"
+    r"|founder(?:\s*(?:,|&|and)\s*(?:CEO|CTO))?|CEO|CTO|chief executive(?: officer)?|chief technology officer"
+    r"|head of (?:applied )?AI|head of engineering|VP,? (?:of )?engineering|vice president,? (?:of )?engineering)"
+)
+PERSON = r"(?P<name>[A-Z][a-z\u00e0-\u00ff'\u2019\-]+(?:\s+[A-Z][a-z\u00e0-\u00ff'\u2019\-]+){1,2})"
+ROLE = rf"(?P<role>{PEOPLE_ROLE})"
+NOT_NAME_WORDS = {
+    "Our", "The", "Meet", "Team", "Leadership", "About", "Company", "Board", "Investors", "Contact",
+    "Careers", "Join", "Us", "Founders", "Founder", "Executive", "Management", "News", "Press",
+}
+TRAILING_WORDS = {"Says", "Said", "Announces", "Talks", "Joins", "Explains", "Shares", "On", "At", "In", "And"}
+
+
+def _person_name(raw: str) -> Optional[str]:
+    tokens = raw.split()
+    while tokens and tokens[-1] in TRAILING_WORDS:
+        tokens.pop()
+    if len(tokens) < 2 or any(t in NOT_NAME_WORDS for t in tokens):
+        return None
+    name = " ".join(tokens)
+    return name if NAME_RE.match(name) else None
+
+
+def extract_people(text: str, company_name: str) -> List[Candidate]:
+    """Leaders named in news snippets ("Chargebee co-founder and CEO Krish Subramanian") or on a
+    team page ("Dana Park" followed by "Founder & CEO")."""
+    company = re.escape(company_name)
+    patterns = [
+        rf"\b{company}(?:'s|\u2019s)?\s+{ROLE}\s+{PERSON}",
+        rf"{PERSON},\s+(?:the\s+)?{ROLE}\s+(?:of|at)\s+{company}\b",
+        rf"{PERSON},\s+{company}(?:'s|\u2019s)?\s+{ROLE}",
+    ]
+    found: Dict[str, Candidate] = {}
+
+    def add(raw_name: str, role_text: str, evidence: str) -> None:
+        name = _person_name(raw_name)
+        score, labels = score_role(role_text)
+        if not name or score <= 0:
+            return
+        cand = Candidate(name, _canonical_role(labels), linkedin_search_url(name, company_name), score, evidence[:160])
+        if name.lower() not in found or cand.score > found[name.lower()].score:
+            found[name.lower()] = cand
+
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            before = text[max(0, match.start() - 25):match.start()]
+            if not FORMER_RE.search(before):
+                add(match.group("name"), match.group("role"), match.group(0))
+
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    for i, line in enumerate(lines):
+        match = re.fullmatch(rf"{PERSON}(?:\s*[,|\u00b7\-\u2013\u2014]\s*{ROLE}.*)?", line)
+        if not match:
+            continue
+        if match.group("role"):
+            add(match.group("name"), line[match.start("role"):][:60], line)
+        elif i + 1 < len(lines) and re.match(rf"^{PEOPLE_ROLE}\b", lines[i + 1]):
+            add(match.group("name"), lines[i + 1][:60], f"{line} {lines[i + 1]}")
+    return sorted(found.values(), key=lambda c: c.score, reverse=True)
+
+
+def first_name_of(full_name: str) -> Optional[str]:
+    """First name of a resolved contact, or None for placeholders like "Not found"."""
+    name = (full_name or "").strip()
+    if not name or name.lower() in {"not found", "unknown", "n/a", "none"}:
+        return None
+    return name.split()[0]
 
 
 def _ascii_token(token: str) -> str:

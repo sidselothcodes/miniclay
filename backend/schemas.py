@@ -4,12 +4,21 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+class ContactPick(BaseModel):
+    full_name: str = Field(description='Real person\'s name, or "Not found".')
+    role: str = Field(description='Current title at this company, e.g. "Co-Founder & CEO".')
+    linkedin_url: str = Field(description="Exact linkedin.com/in/ URL if one appears in the evidence, else empty.")
+    source: str = Field(description='"evidence" (named in the evidence), "knowledge" (well-known exec) or "none".')
+    confidence: str = Field(description='"high", "medium" or "low" that this person holds this role today.')
+
+
 class DecisionMaker(BaseModel):
-    full_name: str = Field(description="Real person's name, copied from the LinkedIn candidates.")
-    role: str = Field(description='Exact title, e.g. "Co-Founder & CTO".')
-    linkedin_url: str = Field(description="Full https://www.linkedin.com/in/... URL from the candidates.")
-    work_email: str = Field(description='Inferred work email, e.g. "tuomas@linear.app".')
-    email_status: str = Field(description='"MX Verified" or "Pattern Inferred".')
+    full_name: str
+    role: str
+    linkedin_url: str
+    work_email: str
+    email_status: str
+    source: str = ""  # linkedin | web | knowledge | reference | none
 
 
 class EnrichedCompany(BaseModel):
@@ -29,7 +38,7 @@ class EnrichedCompany(BaseModel):
     )
     fit_tier: str = Field(description='"Strong Fit", "Moderate Fit" or "Low Fit" for the seller\'s product.')
     fit_reason: str = Field(description="One sentence, max 20 words: why this company does or doesn't fit the seller.")
-    decision_maker: DecisionMaker
+    decision_maker: ContactPick
     ai_outreach: str = Field(
         description='2-3 short sentences, 30-40 words, starting "Hey <FirstName>,". Empty string for "Low Fit".'
     )
@@ -39,6 +48,7 @@ class EnrichedCompany(BaseModel):
 
 
 class EnrichmentRow(EnrichedCompany):
+    decision_maker: DecisionMaker
     status: str = "success"
     error: Optional[str] = None
     cached: bool = False

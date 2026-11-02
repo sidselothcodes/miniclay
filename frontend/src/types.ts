@@ -4,6 +4,7 @@ export interface DecisionMaker {
   linkedin_url: string;
   work_email: string;
   email_status: 'MX Verified' | 'Pattern Inferred' | 'No MX Records' | 'Unknown';
+  source?: 'linkedin' | 'web' | 'knowledge' | 'reference' | 'none' | '';
 }
 
 export interface EnrichmentResult {

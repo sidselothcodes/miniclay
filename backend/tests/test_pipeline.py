@@ -5,7 +5,7 @@ import re
 import enrichment
 from fit import LOW, TIERS
 from outreach import find_violations, has_dash, word_count
-from schemas import DecisionMaker, EnrichedCompany, EnrichmentRow
+from schemas import ContactPick, EnrichedCompany, EnrichmentRow
 from settings import DEFAULT_SELLER_CONTEXT, SEED_PATH
 
 FRONTEND = SEED_PATH.parents[2] / "frontend" / "src"
@@ -87,8 +87,8 @@ async def test_llm_cannot_manufacture_a_fit_for_a_consumer_brand(acme_client):
         pricing_tier_summary="Pricing not public",
         tech_and_live_signals=["Product: cakes", "Traction: Portland", "Scale: nationwide shipping"],
         fit_tier="Strong Fit", fit_reason="Uses AI to personalize cake recommendations.",
-        decision_maker=DecisionMaker(full_name="Pat Baker", role="CEO", linkedin_url="https://www.linkedin.com/in/pat",
-                                     work_email="pat@sweetcrumb.co", email_status="MX Verified"),
+        decision_maker=ContactPick(full_name="Pat Baker", role="CEO", linkedin_url="https://www.linkedin.com/in/pat",
+                                   source="knowledge", confidence="low"),
         ai_outreach="Hey Pat, saw your AI cake recommendations. We catch hallucinations. Open to a look?",
         sources_used=["Website"],
     )
@@ -137,8 +137,8 @@ async def test_llm_output_is_grounded(acme_client):
         tech_and_live_signals=["Trigger: Agents API launch", "Stack/GitHub: evals, acme-python", "Compliance: SOC 2 Type II"],
         fit_tier="strong",
         fit_reason="Ships LLM agents — exactly the workflow you evaluate.",
-        decision_maker=DecisionMaker(full_name="Made Up Person", role="CTO", linkedin_url="https://www.linkedin.com/in/fake",
-                                     work_email="made@acmeai.dev", email_status="MX Verified"),
+        decision_maker=ContactPick(full_name="Made Up Person", role="CTO", linkedin_url="https://www.linkedin.com/in/fake",
+                                   source="knowledge", confidence="high"),
         ai_outreach="Hi Made — I admire how the Agents API streamlines replay! It would be a game changer -- want to chat?",
         sources_used=["Website", "AI", "Pricing"],
     )
