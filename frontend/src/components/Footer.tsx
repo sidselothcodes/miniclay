@@ -17,7 +17,7 @@ const Footer: React.FC = () => {
         </a>
         <span className="footer-divider">·</span>
         <a
-          href="https://github.com/siddarthseloth"
+          href="https://github.com/sidselothcodes/miniclay"
           target="_blank"
           rel="noopener noreferrer"
           className="footer-link"
