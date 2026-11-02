@@ -43,6 +43,12 @@ GITHUB_RESERVED = {
 }
 
 TEAM_SLUGS = ["leadership", "team", "our-team", "founders", "people", "about", "about-us", "company"]
+LEADER_HINT_RE = re.compile(r"\b(?:co-?founder|founder|CEO|CTO|managing partner|partner|principal|head of)\b", re.I)
+
+# Cloud servers are often served a regional site ("Razorpay USA"); retry once as an Indian visitor.
+REGION_WORDS = r"USA|US|U\.S\.|United States|UK|United Kingdom|UAE|Singapore|Malaysia|Australia|Canada|Europe|EU"
+REGION_SUBDOMAINS = {"us", "uk", "sg", "my", "au", "ae", "ca", "eu"}
+INDIA_HEADERS = {"Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8"}
 
 # "$20/user/mo", "$8 per seat per month", "€10", "2.9% + 30¢"
 PRICE_RE = re.compile(
@@ -86,6 +92,7 @@ class PageData:
     text: str = ""
     links: List[str] = field(default_factory=list)
     github_orgs: List[str] = field(default_factory=list)
+    regional: bool = False
 
     @property
     def is_useful(self) -> bool:
@@ -183,15 +190,42 @@ def parse_page(html: str, url: str, kind: str) -> PageData:
     )
 
 
+def is_regional_variant(page: PageData, domain: str) -> bool:
+    host = strip_www(urlparse(page.url).netloc)
+    if host != domain and host.split(".")[0] in REGION_SUBDOMAINS:
+        return True
+    label = re.escape(domain.split(".")[0])
+    pattern = rf"\b{label}\s+(?:{REGION_WORDS})\b|\bfor (?:{REGION_WORDS}) (?:businesses|companies)\b"
+    return bool(re.search(pattern, page.title, re.I))
+
+
+def strip_region_suffix(name: str, domain: str) -> str:
+    """'Razorpay USA' -> 'Razorpay' (only when what's left is the domain's brand)."""
+    match = re.match(rf"^(.+?)\s+(?:{REGION_WORDS})$", name.strip())
+    squash = lambda t: re.sub(r"[^a-z0-9]", "", t.lower())  # noqa: E731
+    if match and squash(match.group(1)) == squash(domain.split(".")[0]):
+        return match.group(1)
+    return name
+
+
+async def _fetch_home(client: httpx.AsyncClient, url: str, headers: Optional[dict] = None) -> Optional[PageData]:
+    fetched = await fetch_html(client, url, headers=headers)
+    if not fetched:
+        return None
+    page = parse_page(fetched[1], fetched[0], "home")
+    return None if looks_like_challenge(page.title, page.text) else page
+
+
 async def fetch_homepage(client: httpx.AsyncClient, domain: str) -> Optional[PageData]:
     for url in (f"https://{domain}", f"https://www.{domain}"):
-        fetched = await fetch_html(client, url)
-        if not fetched:
+        page = await _fetch_home(client, url)
+        if not page:
             continue
-        final_url, html = fetched
-        page = parse_page(html, final_url, "home")
-        if looks_like_challenge(page.title, page.text):
-            continue
+        if is_regional_variant(page, domain):
+            retry = await _fetch_home(client, url, headers=INDIA_HEADERS)
+            if retry and not is_regional_variant(retry, domain):
+                return retry
+            page.regional = True
         return page
     return None
 
@@ -265,7 +299,7 @@ async def fetch_subpages(
 
 
 async def fetch_team_page(client: httpx.AsyncClient, domain: str, home: Optional[PageData]) -> Optional[PageData]:
-    """Leadership/team/about page: homepage links first (most specific slug wins), else /about and /team."""
+    """Leadership/team/about page: linked pages first, plus /team, /about-us and /about; prefers one naming leaders."""
     base = home.url if home else f"https://{domain}"
     host = strip_www(urlparse(base).netloc) or domain
     linked: Dict[str, str] = {}
@@ -276,9 +310,14 @@ async def fetch_team_page(client: httpx.AsyncClient, domain: str, home: Optional
             continue
         if segments[-1] in TEAM_SLUGS and segments[-1] not in linked:
             linked[segments[-1]] = f"{parsed.scheme or 'https'}://{parsed.netloc or urlparse(base).netloc}{parsed.path}"
-    urls = [linked[slug] for slug in TEAM_SLUGS if slug in linked][:2] or [urljoin(base, "/about"), urljoin(base, "/team")]
-    pages = await asyncio.gather(*(_fetch_subpage(client, "team", url, home, min_chars=20) for url in urls))
-    return next((page for page in pages if page), None)
+    urls: List[str] = []
+    for url in [linked[slug] for slug in TEAM_SLUGS if slug in linked][:2] + [
+        urljoin(base, path) for path in ("/team", "/about-us", "/about")
+    ]:
+        if url.rstrip("/") not in {u.rstrip("/") for u in urls}:
+            urls.append(url)
+    pages = [p for p in await asyncio.gather(*(_fetch_subpage(client, "team", u, home, min_chars=20) for u in urls)) if p]
+    return next((p for p in pages if LEADER_HINT_RE.search(p.text)), pages[0] if pages else None)
 
 
 def extract_price_points(text: str, limit: int = 4) -> List[str]:

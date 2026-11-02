@@ -25,11 +25,17 @@ ROLE_RULES: List[Tuple[str, str, int]] = [
     (r"Head of (?:Applied )?AI\b|Head of (?:Data (?:&|and) )?AI\b|Head of Machine Learning|Head of ML\b", "Head of AI", 92),
     (r"\bVP,? (?:of )?Engineering\b|Vice President,? (?:of )?Engineering|SVP,? (?:of )?Engineering", "VP of Engineering", 88),
     (r"Head of Engineering|Engineering Director|Director of Engineering", "Head of Engineering", 82),
+    (r"\bManaging Partner\b|\bGeneral Partner\b|\bFounding Partner\b", "Managing Partner", 84),
     (r"\bCo-?founder\b", "Co-Founder", 80),
     (r"\bFounder\b", "Founder", 78),
     (r"\bCEO\b|Chief Executive Officer", "CEO", 76),
+    (r"\bPartner\b(?!\s*(?:Manager|Success|Marketing|Engineer)\b)", "Partner", 70),
     (r"Chief Product Officer|\bCPO\b", "Chief Product Officer", 66),
+    (r"\bPrincipal\b(?!\s+(?:Engineer|Software|Scientist|Designer|Product|Architect|Consultant|Data|Research|Analyst|Program|Applied))",
+     "Principal", 64),
 ]
+INVESTOR_LABELS = {"Managing Partner", "Partner", "Principal"}
+HONORIFIC_RE = re.compile(r"^(?:dr|mr|mrs|ms|mx|prof|sir|shri|sri|smt)\.?\s+", re.I)
 NON_TECH_ROLE_RE = re.compile(r"\b(sales|marketing|recruit\w*|talent|partnerships?|account|people|finance|legal|GTM)\b", re.I)
 FORMER_RE = re.compile(r"\b(former|formerly|ex-|previously|past|alum(?:nus|ni)?)\b", re.I)
 NAME_TOKEN = r"[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.\-]+"
@@ -45,10 +51,6 @@ class Candidate:
     score: int
     evidence: str = ""
 
-    @property
-    def first_name(self) -> str:
-        return self.full_name.split()[0]
-
 
 def linkedin_query(company_name: str) -> str:
     return (
@@ -57,8 +59,18 @@ def linkedin_query(company_name: str) -> str:
     )
 
 
+def strip_honorific(full_name: str) -> str:
+    """'Dr. Vivek Raghavan' -> 'Vivek Raghavan'."""
+    return HONORIFIC_RE.sub("", (full_name or "").strip())
+
+
+def name_key(full_name: str) -> str:
+    return strip_honorific(full_name).lower()
+
+
 def linkedin_search_url(full_name: str, company_name: str) -> str:
-    return f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(f'{full_name} {company_name}')}"
+    keywords = f"{strip_honorific(full_name)} {company_name}"
+    return f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(keywords)}"
 
 
 def canonical_profile_url(url: str) -> Optional[str]:
@@ -132,7 +144,7 @@ def parse_linkedin_hit(hit: SearchHit, company_name: str) -> Optional[Candidate]
         s_score, s_labels = score_role(snippet_role.group(1))
         if s_score > score:
             score, labels, role_source = s_score, s_labels, snippet_role.group(1)
-    if score <= 0:
+    if score <= 0 or (set(labels) <= INVESTOR_LABELS and not in_title):
         return None
 
     if not in_title:
@@ -184,14 +196,15 @@ def profile_urls(hits: List[SearchHit]) -> Dict[str, str]:
             continue
         name = CREDENTIAL_SUFFIX_RE.sub("", re.split(r"\s+[-\u2013\u2014|]\s+", hit.title)[0]).strip()
         if NAME_RE.match(name):
-            urls.setdefault(name.lower(), url)
+            urls.setdefault(name_key(name), url)
     return urls
 
 
 PEOPLE_ROLE = (
     r"(?i:co-?founder(?:\s*(?:,|&|and)\s*(?:CEO|CTO|chief executive(?: officer)?|chief technology officer))?"
     r"|founder(?:\s*(?:,|&|and)\s*(?:CEO|CTO))?|CEO|CTO|chief executive(?: officer)?|chief technology officer"
-    r"|head of (?:applied )?AI|head of engineering|VP,? (?:of )?engineering|vice president,? (?:of )?engineering)"
+    r"|head of (?:applied )?AI|head of engineering|VP,? (?:of )?engineering|vice president,? (?:of )?engineering"
+    r"|(?:founding\s*(?:&|and)\s*)?managing partner|general partner|founding partner|venture partner|partner|principal)"
 )
 PERSON = r"(?P<name>[A-Z][a-z\u00e0-\u00ff'\u2019\-]+(?:\s+[A-Z][a-z\u00e0-\u00ff'\u2019\-]+){1,2})"
 ROLE = rf"(?P<role>{PEOPLE_ROLE})"
@@ -228,7 +241,10 @@ def extract_people(text: str, company_name: str) -> List[Candidate]:
         score, labels = score_role(role_text)
         if not name or score <= 0:
             return
-        cand = Candidate(name, _canonical_role(labels), linkedin_search_url(name, company_name), score, evidence[:160])
+        role = re.split(r"[.;|(]|,?\s+(?:previously|formerly|ex-)", role_text.strip())[0].strip(" ,")
+        if not (role[:1].isupper() and " and " not in role and len(role) <= 40):
+            role = _canonical_role(labels)
+        cand = Candidate(name, role, linkedin_search_url(name, company_name), score, evidence[:160])
         if name.lower() not in found or cand.score > found[name.lower()].score:
             found[name.lower()] = cand
 
@@ -240,7 +256,10 @@ def extract_people(text: str, company_name: str) -> List[Candidate]:
 
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     for i, line in enumerate(lines):
-        match = re.fullmatch(rf"{PERSON}(?:\s*[,|\u00b7\-\u2013\u2014]\s*{ROLE}.*)?", line)
+        # "Name - Role ..." or "Name Role" (space-only separator only when the title ends the line).
+        match = re.fullmatch(rf"{PERSON}\s*[,|\u00b7\-\u2013\u2014]\s*{ROLE}\b.*", line) or re.fullmatch(
+            rf"{PERSON}(?:\s+{ROLE})?\s*", line
+        )
         if not match:
             continue
         if match.group("role"):
@@ -251,8 +270,8 @@ def extract_people(text: str, company_name: str) -> List[Candidate]:
 
 
 def first_name_of(full_name: str) -> Optional[str]:
-    """First name of a resolved contact, or None for placeholders like "Not found"."""
-    name = (full_name or "").strip()
+    """First name without honorifics ('Dr. Vivek Raghavan' -> 'Vivek'), or None for placeholders."""
+    name = strip_honorific(full_name)
     if not name or name.lower() in {"not found", "unknown", "n/a", "none"}:
         return None
     return name.split()[0]
@@ -264,7 +283,8 @@ def _ascii_token(token: str) -> str:
 
 
 def email_candidates(full_name: str, domain: str) -> List[str]:
-    tokens = [t for t in re.split(r"[\s]+", CREDENTIAL_SUFFIX_RE.sub("", full_name)) if t and not t.endswith(".")]
+    clean = CREDENTIAL_SUFFIX_RE.sub("", strip_honorific(full_name))
+    tokens = [t for t in re.split(r"\s+", clean) if t and not t.endswith(".")]
     if not tokens:
         return []
     first = _ascii_token(tokens[0])

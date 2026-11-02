@@ -9,7 +9,8 @@ TARGET_MAX_WORDS = 40
 MAX_WORDS = 45
 MAX_SENTENCES = 3
 
-BANNED: List[Tuple[str, str]] = [
+# Replacement None means the phrase can't be patched in place; the draft is rewritten instead.
+BANNED: List[Tuple[str, Optional[str]]] = [
     (r"\bI (?:really |truly )?admire\b", "I noticed"),
     (r"\bempowering\b", "helping"),
     (r"\bempowers\b", "helps"),
@@ -23,23 +24,29 @@ BANNED: List[Tuple[str, str]] = [
     (r"\bstreamlining\b", "simplifying"),
     (r"\bstreamline\b", "simplify"),
     (r"\beffortless(?:ly)?\b", ""),
-    (r"\blove how you\b", "noticed you"),
+    (r"\blove how you\b", "like how you"),
     (r"\bseamless(?:ly)?\b", ""),
     (r"\brevolutioniz(?:e|es|ing)\b", "change"),
     (r"\bcutting[\s-]edge\b", "new"),
     (r"\bleverag(?:e|es|ing)\b", "use"),
     (r"\bexcited\b", "curious"),
     (r"\bunlock(?:s|ing)?\b", "open up"),
+    (r"\bsupport your (?:efforts|goals)\b", None),
+    (r"\bexplore how we can\b", None),
+    (r"\blet[\u2019']?s connect\b", None),
+    (r"\bbrief discussion\b", None),
+    (r"\b(?:I see|noticed) (?:that )?you ship\b", None),
 ]
 BANNED_DISPLAY = [
     "I admire", "empower", "synergies", "thrilled", "game changer", "streamlines",
     "effortlessly", "love how you", "seamless", "revolutionize", "cutting-edge",
-    "leverage", "excited", "unlock",
+    "leverage", "excited", "unlock", "support your efforts", "support your goals", "explore how we can",
+    "let's connect", "brief discussion", "I see you ship",
 ]
 
 # Em-dash, double hyphen, or a spaced en-dash.
 DASH_RE = re.compile(r"\s*(?:—|-{2,}|\s–\s)\s*")
-GREETING_RE = re.compile(r"^\s*(?:hey|hi|hello)\s+[^\s,—–-]+\s*(?:,|—|–|-{1,2})?\s*", re.I)
+GREETING_RE = re.compile(r"^\s*(?:hey|hi|hello)\s+[^,\u2014\u2013\n]{1,40}?(?:,|\u2014|\u2013|\s-{1,2})\s*", re.I)
 CASUAL_OPENERS = {"saw", "been", "noticed", "curious", "seeing", "caught", "read", "looks", "quick", "loved"}
 
 
@@ -56,7 +63,7 @@ def has_dash(text: str) -> bool:
     return bool(DASH_RE.search(text))
 
 
-def find_violations(text: str, first_name: Optional[str]) -> List[str]:
+def find_violations(text: str, greet_name: Optional[str]) -> List[str]:
     issues: List[str] = []
     for pattern, _ in BANNED:
         match = re.search(pattern, text, re.I)
@@ -66,8 +73,8 @@ def find_violations(text: str, first_name: Optional[str]) -> List[str]:
         issues.append("exclamation mark")
     if has_dash(text):
         issues.append("em-dash or double hyphen (use a comma or period)")
-    if first_name and not re.match(rf"^Hey {re.escape(first_name)},\s", text):
-        issues.append(f'must start with "Hey {first_name},"')
+    if greet_name and not re.match(rf"^Hey {re.escape(greet_name)},\s", text):
+        issues.append(f'must start with "Hey {greet_name},"')
     if re.search(r"\b(?:19|20)\d{2}\b", text):
         issues.append("mentions a date/year (don't recite their news back to them)")
     if "(" in text:
@@ -82,9 +89,10 @@ def find_violations(text: str, first_name: Optional[str]) -> List[str]:
     return issues
 
 
-def sanitize(text: str, first_name: Optional[str]) -> str:
+def sanitize(text: str, greet_name: str) -> str:
     for pattern, replacement in BANNED:
-        text = re.sub(pattern, replacement, text, flags=re.I)
+        if replacement is not None:
+            text = re.sub(pattern, replacement, text, flags=re.I)
     body = GREETING_RE.sub("", text.replace("!", "."), count=1)
     body = DASH_RE.sub(", ", body)
     body = re.sub(r"\s*\([^)]*\)", "", body)
@@ -94,7 +102,7 @@ def sanitize(text: str, first_name: Optional[str]) -> str:
     if first_word in CASUAL_OPENERS:
         body = body[0].lower() + body[1:]
     sentences = split_sentences(body)[:MAX_SENTENCES]
-    greeting = f"Hey {first_name}," if first_name else "Hey there,"
+    greeting = f"Hey {greet_name},"
     return f"{greeting} {' '.join(sentences)}".strip()
 
 
@@ -146,8 +154,8 @@ def casual_from_headline(company_name: str, headline: str) -> str:
     return f"saw the recent {company_name} news"
 
 
-def compose_outreach(first_name: Optional[str], casual: str, seller_context: str) -> str:
-    greeting = f"Hey {first_name or 'there'},"
+def compose_outreach(greet_name: str, casual: str, seller_context: str) -> str:
+    greeting = f"Hey {greet_name},"
     opener = f"{greeting} {casual.strip().rstrip('.')}."
     value = _value_sentence(seller_context)
     question = "Are you handling that in-house, or open to a quick look?"
@@ -158,4 +166,4 @@ def compose_outreach(first_name: Optional[str], casual: str, seller_context: str
     if word_count(text) > TARGET_MAX_WORDS:
         opener = f"{greeting} {_trim(casual, max(4, len(casual.split()) - (word_count(text) - TARGET_MAX_WORDS)))}."
         text = f"{opener} {value} {question}"
-    return sanitize(text, first_name or "there")
+    return sanitize(text, greet_name)

@@ -37,12 +37,13 @@ Each row matches `schemas.EnrichmentRow`: the `EnrichedCompany` fields (includin
 - `sources/github.py`: org from a homepage link, then slug guesses verified against the org's `blog` field, then GitHub search. REST API first, HTML fallback when rate-limited (set `GITHUB_TOKEN` for 5,000 req/h)
 - `sources/search.py`: DDGS (`ddgs` / `duckduckgo-search`), then DuckDuckGo HTML, then Bing HTML. A failing provider is skipped for 90s
 - `sources/contacts.py`: LinkedIn-scoped and general leadership searches; parses `Name - Title - Company | LinkedIn` results plus leaders named in news snippets and team pages, ranked CTO > Head of AI > VP Eng > Co-Founder > Founder > CEO (former employees and non-technical "Head of AI Sales"-type roles are demoted). Emails are `first@`, `flast@` and `first.last@`, with MX checked through dnspython, then DNS-over-HTTPS
-- Point of contact precedence (`enrichment.resolve_contact`): a person found in the evidence, then a well-known exec the LLM is highly confident about (only when the evidence names nobody), else "Not found". LinkedIn shows `in/<slug>` only when that exact profile URL was in the search results, otherwise a people-search link; the outreach greeting always matches the contact ("Hey there," when none)
+- Point of contact precedence (`enrichment.resolve_contact`): a person found in the evidence, then a well-known exec the LLM is highly confident about (only when the evidence names nobody), else "Not found". LinkedIn shows `in/<slug>` only when that exact profile URL was in the search results, otherwise a people-search link; the outreach greeting always matches the contact, without honorifics ("Hey Vivek," for "Dr. Vivek Raghavan"; "Hey <Company> team," when none). Investor titles (Managing/General/Founding Partner, Partner, Principal) count too, and `/team`, `/about-us` and `/about` are always tried
+- Geo-redirects: if a US server is served a regional site (e.g. "Razorpay USA"), the homepage is refetched as an Indian visitor (`Accept-Language: en-IN`) and region suffixes are stripped from the company name
 - `llm.py`: OpenAI structured output (`EnrichedCompany`) plus one repair pass if the outreach breaks the rules
 - `outreach.py`: draft guardrails (`Hey <First>,`, 45-word ceiling, no em-dashes/double hyphens, no dates or asides, banned phrases) and the no-LLM composer
 - `fit.py`: evidence-based Strong/Moderate/Low fit; consumer brands with no AI evidence are always Low Fit for AI sellers, whatever the LLM says
 - `enrichment.py`: orchestration, grounding (sources are limited to what was fetched), and a rules-based fallback when there is no API key
-- `knowledge.py`: curated reference data for the default domains, used only to fill gaps
+- `knowledge.py`: curated reference data for the default domains and the Indian demo set (SenseAI, Sarvam, Bolna, Razorpay, Zepto, Chaayos, Chargebee), used only to fill gaps
 - `cache.py`: SQLite cache keyed by (domain, seller context), 7-day TTL
 
 ## Tests

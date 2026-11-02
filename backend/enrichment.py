@@ -95,7 +95,7 @@ class SourceBundle:
         emails = contacts.email_candidates(full_name, self.domain)
         seen_profiles = {contacts.canonical_profile_url(h.url) for h in self.people_hits} - {None}
         given = contacts.canonical_profile_url(linkedin_url or "")
-        profile = contacts.profile_urls(self.people_hits).get(full_name.lower()) or (
+        profile = contacts.profile_urls(self.people_hits).get(contacts.name_key(full_name)) or (
             given if given in seen_profiles else None
         )
         return {
@@ -114,10 +114,10 @@ class SourceBundle:
         options: List[dict] = []
         live = sorted(self.linkedin + self.people, key=lambda c: (-c.score, "/in/" not in c.linkedin_url))
         for cand in live:
-            if all(o["full_name"].lower() != cand.full_name.lower() for o in options):
+            if all(contacts.name_key(o["full_name"]) != contacts.name_key(cand.full_name) for o in options):
                 options.append(self.contact(cand.full_name, cand.role, "web", cand.linkedin_url))
         kb_dm = (self.kb or {}).get("decision_maker")
-        if kb_dm and all(o["full_name"].lower() != kb_dm["full_name"].lower() for o in options):
+        if kb_dm and all(contacts.name_key(o["full_name"]) != contacts.name_key(kb_dm["full_name"]) for o in options):
             option = self.contact(kb_dm["full_name"], kb_dm["role"], "reference")
             option["linkedin_url"] = kb_dm["linkedin_url"]
             options.append(option)
@@ -131,11 +131,11 @@ def derive_company_name(home: Optional[website.PageData], kb: Optional[dict], do
     squash = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())  # noqa: E731
     if home:
         if home.site_name and len(home.site_name.split()) <= 3:
-            return home.site_name
+            return website.strip_region_suffix(home.site_name, domain)
         for segment in re.split(r"\s+[|–—\-:·]\s+|:\s+", home.title):
             segment = segment.strip()
             if segment and len(segment.split()) <= 3 and squash(segment).startswith(squash(label)[:4]):
-                return segment
+                return website.strip_region_suffix(segment, domain)
     return label.capitalize()
 
 
@@ -351,23 +351,23 @@ def _placeholder_dm(company_name: str) -> dict:
 
 def resolve_contact(bundle: SourceBundle, pick: Optional[ContactPick]) -> dict:
     """Point of contact, in order: a person the pipeline found; a person the LLM read out of the
-    evidence; a well-known exec the LLM is highly confident about (only when evidence names nobody);
-    otherwise "Not found"."""
+    evidence; a real founder/exec from the LLM's own knowledge when the evidence names nobody (e.g.
+    search was rate-limited); otherwise "Not found". Only low-confidence guesses are dropped."""
     options = bundle.decision_maker_options()
     name = re.sub(r"\s+", " ", pick.full_name if pick else "").strip()
-    if pick and contacts.first_name_of(name):
-        match = next((o for o in options if o["full_name"].lower() == name.lower()), None)
-        if match:
-            if match["origin"] != "reference" and pick.role.strip():
-                match["role"] = pick.role.strip()
-            return match
-        is_person = bool(contacts.NAME_RE.match(name))
-        role_ok = contacts.score_role(pick.role)[0] > 0
-        if is_person and role_ok and re.search(rf"\b{re.escape(name)}\b", bundle.evidence_text, re.I):
-            return bundle.contact(name, pick.role.strip(), "web", pick.linkedin_url.strip())
-        trusted_knowledge = pick.source.strip().lower() == "knowledge" and pick.confidence.strip().lower() == "high"
-        if not options and is_person and role_ok and trusted_knowledge:
-            return bundle.contact(name, pick.role.strip(), "knowledge")
+    if not (pick and contacts.first_name_of(name) and contacts.NAME_RE.match(name)):
+        return options[0] if options else _placeholder_dm(bundle.company_name)
+    role = pick.role.strip() or "Founder"
+    match = next((o for o in options if contacts.name_key(o["full_name"]) == contacts.name_key(name)), None)
+    if match:
+        if match["origin"] != "reference" and pick.role.strip():
+            match["role"] = role
+        return match
+    if re.search(rf"\b{re.escape(contacts.strip_honorific(name))}\b", bundle.evidence_text, re.I):
+        return bundle.contact(name, role, "web", pick.linkedin_url.strip())
+    live_options = [o for o in options if o["origin"] != "reference"]
+    if not live_options and pick.confidence.strip().lower() in {"high", "medium"}:
+        return bundle.contact(name, role, "knowledge")
     return options[0] if options else _placeholder_dm(bundle.company_name)
 
 
@@ -381,7 +381,6 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
     elif chosen["origin"] == "knowledge":
         fallbacks.append("decision_maker_from_model_knowledge")
     first_name = contacts.first_name_of(chosen["full_name"]) if chosen["origin"] != "none" else None
-    greet_name = first_name or "there"
     decision_maker = DecisionMaker(
         full_name=chosen["full_name"],
         role=chosen["role"],
@@ -394,7 +393,8 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
     if llm_result:
         fields = {
             "domain": bundle.domain,
-            "company_name": llm_result.company_name.strip() or rules["company_name"],
+            "company_name": website.strip_region_suffix(llm_result.company_name.strip(), bundle.domain)
+            or rules["company_name"],
             "product_and_icp": llm_result.product_and_icp.strip() or rules["product_and_icp"],
             "gtm_motion": llm_result.gtm_motion.strip() or rules["gtm_motion"],
             "pricing_tier_summary": llm_result.pricing_tier_summary.strip() or rules["pricing_tier_summary"],
@@ -415,6 +415,8 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
         fields = rules
         outreach = ""
         generated_by = "rules"
+
+    greet_name = first_name or f"{fields['company_name']} team"
 
     # Curated fit only applies to the default pitch; anything else is judged on evidence.
     evidence = fit_evidence(bundle)
@@ -443,12 +445,12 @@ def build_row(bundle: SourceBundle, seller_context: str, llm_result: Optional[En
             if default_pitch and same_person and kb.get("outreach_default"):
                 outreach = kb["outreach_default"]
             else:
-                outreach = compose_outreach(first_name, _casual_mention(bundle), seller_context)
-        # The greeting must name the POINT OF CONTACT, or nobody ("Hey there,") when none was found.
+                outreach = compose_outreach(greet_name, _casual_mention(bundle), seller_context)
+        # The greeting must name the POINT OF CONTACT, or the company's team when none was found.
         if find_violations(outreach, greet_name):
             cleaned = sanitize(outreach, greet_name)
             if find_violations(cleaned, greet_name):
-                cleaned = compose_outreach(first_name, _casual_mention(bundle), seller_context)
+                cleaned = compose_outreach(greet_name, _casual_mention(bundle), seller_context)
             outreach = cleaned
 
     source_urls: Dict[str, List[str]] = {}

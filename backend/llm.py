@@ -27,7 +27,7 @@ Ground rules:
 - Prefer the most recent dated evidence. When evidence for a field is missing, say so plainly instead of guessing.
 
 Fields:
-- company_name: the short brand name.
+- company_name: the short global brand name. Never add a country or region suffix picked up from a geo-redirected regional page (write "Razorpay", not "Razorpay USA").
 - product_and_icp: ONE sentence, max 22 words, no buzzwords: what they build and who buys it (team, role or company type).
 - gtm_motion: 1-3 words, e.g. "Usage-Based", "Freemium PLG", "Sales-Led Enterprise", "Self-Serve SaaS", "Consumer D2C".
 - pricing_tier_summary: concrete figures copied from [Pricing], max 70 characters, e.g. "$20/user/mo + usage", "2.9% + 30¢ per tx". If no figures: "Custom / contact sales" or "Pricing not public".
@@ -38,17 +38,19 @@ Fields:
 - fit_tier: how well the SELLER's product solves a problem this company has today. One of "Strong Fit", "Moderate Fit", "Low Fit".
   Strong: evidence shows they run the exact workflow the seller's product addresses. Moderate: adjacent or early signals. Low: no evidence of that workflow (consumer brands, offline businesses, unrelated products).
   Never invent AI, LLM or other usage to manufacture a fit. A bakery or apparel brand is "Low Fit" for an LLM tool. When unsure, pick the lower tier.
+  Count AI launches listed in [Reference] or [News] even when the fetched page is a regional variant. For investment firms, fit can come from their own AI tooling or from what their portfolio builds.
 - fit_reason: ONE sentence, max 20 words, specific to this company and the seller, e.g. "Consumer retail brand with no customer-facing LLM workflows in production."
 - decision_maker: the best point of contact, chosen in this order:
-  1. A person the evidence names ([Contacts], [People], [Team], [News], [Website]) as a CURRENT Founder, Co-Founder, CEO, CTO, Head of AI or VP of Engineering at THIS company. Prefer CTO > Head of AI > VP of Engineering; at startups under ~20 people prefer the Founder/CEO or Co-Founder/CTO. Set source "evidence".
-  2. Only if the evidence names nobody: a real, current Founder/CEO/CTO of an established company that you know with high confidence (e.g. Krish Subramanian, Co-Founder & CEO of Chargebee). Set source "knowledge". Never guess for small or obscure companies.
+  1. A person the evidence names ([Contacts], [People], [Team], [News], [Website]) as a CURRENT Founder, Co-Founder, CEO, CTO, Head of AI or VP of Engineering at THIS company, or a Managing Partner, General Partner, Partner or Principal at an investment firm. Prefer CTO > Head of AI > VP of Engineering; at startups under ~20 people prefer the Founder/CEO or Co-Founder/CTO. Set source "evidence".
+  2. If the scraped pages and search results name nobody (search is often rate-limited), you MUST use your own knowledge to name the real Founder, Co-Founder, CEO, CTO or Managing Partner of the company if you know who founded or leads it, e.g. Maitreya Wagh or Prateek Sachan for bolna.ai, Harshil Mathur or Shashank Kumar for razorpay.com, Aadit Palicha or Kaivalya Vohra for zeptonow.com, Nitin Saluja or Raghav Verma for chaayos.com, Rahul Agarwalla or Shubham Titare for senseai.ai, Krish Subramanian for chargebee.com. Set source "knowledge". Do not guess names you don't actually know.
   3. Otherwise full_name "Not found", role "", source "none".
+  full_name: the person's name without honorifics like "Dr." or "Mr.".
   linkedin_url: copy an exact linkedin.com/in/ URL only if it appears in the evidence for that person; otherwise "". confidence: how sure you are this person holds this role today.
 - sources_used: only labels of evidence blocks you actually used, from ["Website", "Pricing", "GitHub", "News", "LinkedIn"]. Never output "AI" or "Reference".
 - ai_outreach: a short cold email from the SELLER to the decision maker. If fit_tier is "Low Fit", return an empty string.
 
 Outreach rules (strict; it must read like a real person typed it):
-1. Start exactly with "Hey <FirstName>," using the decision_maker's first name (or "Hey there," if decision_maker is "Not found"), then continue sentence 1 casually, e.g. "Hey Emily, saw you're rolling out agent checkout on Link."
+1. Start exactly with "Hey <FirstName>," using the decision_maker's first name (or "Hey <Company> team," if decision_maker is "Not found"), then continue sentence 1 casually, e.g. "Hey Emily, saw you're rolling out agent checkout on Link."
 2. 2-3 short sentences, 30-40 words total.
 3. Mention their product the way an insider would, in 4-6 casual words. Never recite conference names, dates, version numbers or feature lists back to them, and no parentheses.
 4. Sentence 2: one plain-English line about the specific headache the seller's product solves for that feature.
@@ -81,8 +83,12 @@ def build_evidence(bundle: "SourceBundle", seller_context: str) -> str:
     ]
     home = bundle.homepage
     if home:
+        regional_note = (
+            "Note: this is a geo-redirected regional page served to a US server; describe the company's main "
+            "business and use its global brand name.\n" if home.regional else ""
+        )
         blocks.append(
-            f"[Website] {home.url}\nTitle: {home.title}\nMeta: {home.meta_description}\n"
+            f"[Website] {home.url}\nTitle: {home.title}\nMeta: {home.meta_description}\n{regional_note}"
             f"Headings: {' | '.join(home.headings[:10])}\n"
             f"Product/AI lines: {' | '.join(signal_lines(home.text))}\nText:\n{home.text[:2500]}"
         )
@@ -191,7 +197,7 @@ async def synthesize(bundle: "SourceBundle", seller_context: str) -> Optional[En
     if "low" in (result.fit_tier or "").lower():
         result.ai_outreach = ""
         return result
-    first_name = first_name_of(result.decision_maker.full_name) or "there"
+    first_name = first_name_of(result.decision_maker.full_name) or f"{result.company_name} team"
     issues = find_violations(result.ai_outreach, first_name)
     if issues:
         try:

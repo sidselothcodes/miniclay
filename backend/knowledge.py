@@ -197,6 +197,124 @@ KNOWLEDGE: Dict[str, dict] = {
     },
 }
 
+
+# Contact-and-context entries for the Indian AI ecosystem demo set (verified 2026-11-02). Partial on
+# purpose: no fit/outreach, so drafts are always written live against the user's own value prop.
+KNOWLEDGE.update({
+    "senseai.ai": {
+        "company_name": "SenseAI Ventures",
+        "product_and_icp": (
+            "Early-stage venture fund backing AI-first Indian startups with seed capital plus product, growth "
+            "and go-to-market support."
+        ),
+        "signals": [
+            "Product: AI-native seed fund running Haystack, an in-house AI platform for deal sourcing and memos.",
+            "Traction: $25M maiden fund for Indian AI-first startups.",
+            "Scale: seed checks plus hands-on product, growth and GTM support for portfolio founders.",
+        ],
+        "decision_maker": {
+            "full_name": "Rahul Agarwalla",
+            "role": "Managing Partner",
+            "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Rahul+Agarwalla+SenseAI",
+        },
+        "casual": "saw Haystack is handling SenseAI's deal sourcing and memos",
+        "notes": "Shubham Titare is Principal. Haystack is per senseai.ai (user-reported); search didn't confirm it.",
+    },
+    "sarvam.ai": {
+        "company_name": "Sarvam AI",
+        "product_and_icp": (
+            "Sovereign generative AI for India: Indic-language LLMs plus speech, translation and chat APIs for "
+            "enterprises, developers and government."
+        ),
+        "signals": [
+            "Launch: Sarvam 30B and 105B models (Feb 2026), in beta as Indus and later open-sourced.",
+            "Traction: Series A from Lightspeed, Peak XV and Khosla; reported talks on a $250M round (Mar 2026).",
+            "Scale: speech, translation and chat APIs across 10+ Indian languages.",
+        ],
+        "decision_maker": {
+            "full_name": "Vivek Raghavan",
+            "role": "Co-Founder",
+            "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Vivek+Raghavan+Sarvam+AI",
+        },
+        "casual": "saw the Sarvam 105B open-weights release",
+        "notes": "Co-founded with Pratyush Kumar (Aug 2023); sources disagree on which co-founder holds the CEO title.",
+    },
+    "bolna.ai": {
+        "company_name": "Bolna",
+        "product_and_icp": (
+            "Voice AI platform where enterprises build, test, deploy and monitor multilingual voice agents for "
+            "Indian languages."
+        ),
+        "signals": [
+            "Product: platform to build, test, deploy and monitor multilingual enterprise voice agents.",
+            "Traction: $6.3M seed led by General Catalyst; Y Combinator F25 batch.",
+            "Scale: 500K+ voice conversations a month across 10+ Indian languages (company figure).",
+        ],
+        "decision_maker": {
+            "full_name": "Prateek Sachan",
+            "role": "Co-Founder & CTO",
+            "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Prateek+Sachan+Bolna",
+        },
+        "casual": "saw Bolna is running voice agents across 10+ Indian languages",
+        "notes": "Maitreya Wagh is Co-Founder & CEO.",
+    },
+    "razorpay.com": {
+        "company_name": "Razorpay",
+        "product_and_icp": (
+            "Payments, banking and payroll stack for Indian businesses, from startups to large enterprises."
+        ),
+        "signals": [
+            "Launch: RAY, an AI account manager on WhatsApp built with IndusInd Bank (Sep 2026).",
+            "Stack: Agent Studio on Anthropic's Claude Agent SDK; agentic UPI payments with NPCI.",
+            "Scale: reportedly weighing a confidential IPO filing at around a $5B valuation (Apr 2026).",
+        ],
+        "decision_maker": {
+            "full_name": "Harshil Mathur",
+            "role": "Co-Founder & CEO",
+            "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Harshil+Mathur+Razorpay",
+        },
+        "casual": "saw RAY is taking actions for merchants on WhatsApp now",
+        "notes": "Shashank Kumar is Co-Founder & MD. US servers are served the Razorpay USA site.",
+    },
+    "zeptonow.com": {
+        "company_name": "Zepto",
+        "product_and_icp": "10-minute grocery and essentials delivery app for urban Indian consumers, run on dark stores.",
+        "signals": [
+            "Product: 10-minute delivery of groceries and essentials from a dark-store network.",
+            "Traction: launch merchant for Razorpay and NPCI agentic UPI payments on Claude (Feb 2026).",
+            "",
+        ],
+        "decision_maker": {
+            "full_name": "Aadit Palicha",
+            "role": "Co-Founder & CEO",
+            "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Aadit+Palicha+Zepto",
+        },
+        "casual": "saw Zepto went live with agentic UPI checkout on Claude",
+        "notes": "Kaivalya Vohra is Co-Founder.",
+    },
+    "chaayos.com": {
+        "company_name": "Chaayos",
+        "product_and_icp": "Chai cafe chain with dine-in, delivery and packaged chai for urban Indian consumers.",
+        "signals": ["Product: made-to-order chai and snacks across cafes and delivery apps.", "", ""],
+        "decision_maker": {
+            "full_name": "Nitin Saluja",
+            "role": "Co-Founder & CEO",
+            "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Nitin+Saluja+Chaayos",
+        },
+        "notes": "Co-founded with Raghav Verma.",
+    },
+    "chargebee.com": {
+        "company_name": "Chargebee",
+        "product_and_icp": "Subscription billing and revenue management software for SaaS and subscription businesses.",
+        "signals": ["Product: subscription billing, invoicing and revenue recognition, including usage-based models.", "", ""],
+        "decision_maker": {
+            "full_name": "Krish Subramanian",
+            "role": "Co-Founder & CEO",
+            "linkedin_url": "https://www.linkedin.com/search/results/people/?keywords=Krish+Subramanian+Chargebee",
+        },
+    },
+})
+
 ALIASES = {"notion.com": "notion.so", "linear.com": "linear.app", "tryramp.com": "ramp.com"}
 
 

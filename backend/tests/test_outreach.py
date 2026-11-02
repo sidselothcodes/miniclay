@@ -113,10 +113,22 @@ def test_non_ai_seller_uses_keyword_overlap():
     assert tier == LOW and "Sweet Crumb" in reason
 
 
-def test_composer_greets_nobody_when_contact_is_unknown():
-    text = compose_outreach(None, "been looking at what Acme is building", DEFAULT_SELLER_CONTEXT)
-    assert text.startswith("Hey there, been looking")
-    assert find_violations(text, "there") == []
+def test_composer_greets_the_team_when_contact_is_unknown():
+    text = compose_outreach("Acme team", "been looking at what Acme is building", DEFAULT_SELLER_CONTEXT)
+    assert text.startswith("Hey Acme team, been looking")
+    assert find_violations(text, "Acme team") == []
+
+
+@pytest.mark.parametrize("phrase", [
+    "Let's connect to discuss how we can support your efforts.",
+    "Happy to explore how we can help your goals.",
+    "Open to a brief discussion next week?",
+    "I see you ship voice agents.",
+])
+def test_template_phrases_are_rejected_not_patched(phrase):
+    text = f"Hey Maitreya, saw Bolna's voice agents. {phrase}"
+    assert any("banned phrase" in issue for issue in find_violations(text, "Maitreya"))
+    assert any("banned phrase" in issue for issue in find_violations(sanitize(text, "Maitreya"), "Maitreya"))
 
 
 def test_word_ceiling_is_45():

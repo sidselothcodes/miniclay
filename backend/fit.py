@@ -22,6 +22,7 @@ AI_USAGE: List[Tuple[str, str]] = [
     ("assistants", r"\bcopilots?\b|\bassistants?\b|\bchatbots?\b"),
     ("model routing", r"\binference\b|\bmodel (?:routing|fallbacks?|providers?)\b|\bAI Gateway\b|\bAI SDK\b"),
     ("retrieval", r"\bRAG\b|\bretrieval\b|\bembeddings?\b|\bsemantic search\b|\bvector\b"),
+    ("speech and translation models", r"\bspeech\b|\btranslation\b|\bvoice (?:AI|agents?)\b"),
 ]
 CONSUMER_RE = re.compile(
     r"add to (?:cart|bag)|shop now|free shipping|order online|our menu|bakery|baked|pastr(?:y|ies)|"

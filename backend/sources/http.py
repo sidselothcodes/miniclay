@@ -31,11 +31,11 @@ def parse_html(html: str):
 
 
 async def fetch_html(
-    client: httpx.AsyncClient, url: str, timeout: float = PAGE_TIMEOUT
+    client: httpx.AsyncClient, url: str, timeout: float = PAGE_TIMEOUT, headers: Optional[dict] = None
 ) -> Optional[Tuple[str, str]]:
     """GET a page. Returns (final_url, html) or None on any failure."""
     try:
-        resp = await client.get(url, timeout=timeout)
+        resp = await client.get(url, timeout=timeout, headers=headers)
     except Exception as exc:
         log.info("fetch failed %s: %s", url, type(exc).__name__)
         return None

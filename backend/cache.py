@@ -20,7 +20,7 @@ log = logging.getLogger("miniclay.cache")
 
 
 # Bump when the row schema or outreach style changes so stale cached rows aren't served.
-CACHE_VERSION = "v3"
+CACHE_VERSION = "v4"
 
 
 def cache_key(domain: str, seller_context: str) -> str:

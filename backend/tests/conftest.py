@@ -53,6 +53,7 @@ SITES = {
     "sweetcrumb.co": {"/": "bakery_home.html"},
     "chargebee.com": {"/": "chargebee_home.html"},
     "quietco.dev": {"/": "quietco_home.html", "/team": "quietco_team.html"},
+    "senseai.ai": {"/": "senseai_home.html", "/team/": "senseai_team.html"},
 }
 SEARCH_RESULTS = {
     ("Acme AI", "linkedin"): "ddg_linkedin.html",
@@ -65,6 +66,9 @@ SEARCH_RESULTS = {
 def acme_handler(request: httpx.Request) -> httpx.Response:
     host, path = request.url.host, request.url.path
     html = {"content-type": "text/html; charset=utf-8"}
+    if host in ("geopay.com", "stuckgeo.com") and path == "/":
+        indian = "en-IN" in request.headers.get("accept-language", "") and host == "geopay.com"
+        return httpx.Response(200, text=fixture("geopay_in.html" if indian else "geopay_us.html"), headers=html)
     if host in SITES:
         page = SITES[host].get(path)
         if page:
